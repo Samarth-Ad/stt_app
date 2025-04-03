@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:stt_app/services/auth_service.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -8,8 +11,82 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final TextEditingController _mobileController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
+  final AuthService _authService = AuthService();
+  bool _isLoading = false;
+  String _errorMessage = '';
+  bool _rememberMe = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkSavedCredentials();
+  }
+
+  // Check if we have saved credentials
+  Future<void> _checkSavedCredentials() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final savedEmail = prefs.getString('savedEmail');
+
+      if (savedEmail != null && savedEmail.isNotEmpty) {
+        setState(() {
+          _emailController.text = savedEmail;
+        });
+      }
+    } catch (e) {
+      print('Error loading saved credentials: $e');
+    }
+  }
+
+  void _login() async {
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      setState(() {
+        _errorMessage = 'Please enter email and password';
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
+    try {
+      // Authenticate with Firebase
+      await _authService.signInWithEmailAndPassword(
+        _emailController.text.trim(),
+        _passwordController.text,
+      );
+
+      // Save email if "Remember Me" is checked
+      if (_rememberMe) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('savedEmail', _emailController.text);
+      }
+
+      // Additional data will be loaded from Firebase in the user profile
+
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/home');
+      }
+    } on FirebaseAuthException catch (e) {
+      setState(() {
+        _errorMessage = _authService.handleAuthException(e);
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = 'An error occurred. Please try again.';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -37,11 +114,7 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ),
               const SizedBox(height: 20),
-              Image.asset(
-                'assets/stt_logo.png', // Make sure to add the logo image to assets
-                height: 100,
-                width: 100,
-              ),
+              Image.asset('assets/stt_logo.png', height: 100, width: 100),
               const SizedBox(height: 30),
               const Text(
                 'Login',
@@ -52,11 +125,21 @@ class _LoginPageState extends State<LoginPage> {
                 ),
               ),
               const SizedBox(height: 20),
+              if (_errorMessage.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  margin: const EdgeInsets.only(bottom: 10),
+                  color: Colors.red.shade100,
+                  child: Text(
+                    _errorMessage,
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                ),
               TextField(
-                controller: _mobileController,
-                keyboardType: TextInputType.phone,
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
                 decoration: const InputDecoration(
-                  labelText: 'Mobile Number',
+                  labelText: 'Email',
                   border: OutlineInputBorder(),
                 ),
               ),
@@ -69,50 +152,66 @@ class _LoginPageState extends State<LoginPage> {
                   border: OutlineInputBorder(),
                 ),
               ),
-              const SizedBox(height: 25),
+              Row(
+                children: [
+                  Checkbox(
+                    value: _rememberMe,
+                    activeColor: const Color(0xFF8B4513),
+                    onChanged: (bool? value) {
+                      setState(() {
+                        _rememberMe = value ?? true;
+                      });
+                    },
+                  ),
+                  const Text('Remember me'),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () {
+                      // Handle forgot password
+                    },
+                    child: const Text(
+                      'Forgot Password?',
+                      style: TextStyle(color: Color(0xFF8B4513)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 15),
               SizedBox(
                 width: double.infinity,
                 height: 45,
                 child: ElevatedButton(
-                  onPressed: () {
-                    // Simple login validation
-                    if (_mobileController.text.isNotEmpty &&
-                        _passwordController.text.isNotEmpty) {
-                      // Navigate to home page after successful login
-                      Navigator.pushReplacementNamed(context, '/home');
-                    } else {
-                      // Show error message
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Please enter mobile number and password',
-                          ),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                    }
-                  },
+                  onPressed: _isLoading ? null : _login,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF8B4513),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  child: const Text(
-                    'Login',
-                    style: TextStyle(color: Colors.white, fontSize: 16),
-                  ),
+                  child:
+                      _isLoading
+                          ? const CircularProgressIndicator(color: Colors.white)
+                          : const Text(
+                            'Login',
+                            style: TextStyle(color: Colors.white, fontSize: 16),
+                          ),
                 ),
               ),
-              const SizedBox(height: 15),
-              GestureDetector(
-                onTap: () {
-                  // Navigate to sign up page
-                  Navigator.pushReplacementNamed(context, '/signup');
+              const SizedBox(height: 20),
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pushReplacementNamed('/signup');
                 },
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF8B4513),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 10,
+                    horizontal: 16,
+                  ),
+                ),
                 child: const Text(
                   'New user? Sign Up',
-                  style: TextStyle(color: Color(0xFF8B4513)),
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
               ),
             ],
@@ -124,7 +223,7 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   void dispose() {
-    _mobileController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }

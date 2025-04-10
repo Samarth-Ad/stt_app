@@ -78,7 +78,7 @@ class _SignUpPageState extends State<SignUpPage> {
       });
     } catch (e) {
       setState(() {
-        _errorMessage = 'An error occurred. Please try again.';
+        _errorMessage = e.toString();
       });
     } finally {
       if (mounted) {

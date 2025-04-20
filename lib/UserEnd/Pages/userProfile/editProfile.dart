@@ -90,15 +90,20 @@ class _EditProfilePageState extends State<EditProfilePage> {
       _errorMessage = '';
     });
 
+    print("EditProfilePage: Starting save user data");
+
     try {
       // Get current Firebase user
       User? currentUser = FirebaseAuth.instance.currentUser;
 
       if (currentUser != null) {
+        print("EditProfilePage: Updating data for user: ${currentUser.uid}");
+
         // Update Firebase Authentication data where possible
         if (_nameController.text.isNotEmpty &&
             _nameController.text != currentUser.displayName) {
           await currentUser.updateDisplayName(_nameController.text);
+          print("EditProfilePage: Updated display name in Firebase Auth");
         }
 
         // Update password if new password field is not empty
@@ -121,11 +126,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
 
             // Update password
             await currentUser.updatePassword(_confirmPasswordController.text);
+            print("EditProfilePage: Password updated successfully");
 
             // Clear password fields
             _passwordController.clear();
             _confirmPasswordController.clear();
           } catch (e) {
+            print("EditProfilePage: Password update failed: $e");
             setState(() {
               _errorMessage = 'Failed to update password: ${e.toString()}';
             });
@@ -133,39 +140,53 @@ class _EditProfilePageState extends State<EditProfilePage> {
           }
         }
 
-        // Save to local storage
+        // Get SharedPreferences instance
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('userName', _nameController.text);
-        await prefs.setString('userEmail', _emailController.text);
-        await prefs.setString('userPhone', _phoneController.text);
-        await prefs.setString('userGender', _selectedGender);
-        await prefs.setString('userMembership', _membershipController.text);
+        print("EditProfilePage: SharedPreferences instance created");
+
+        // Save basic profile data
+        await prefs.setString('user_display_name', _nameController.text);
+        await prefs.setString('user_email', _emailController.text);
+        await prefs.setString('user_phone', _phoneController.text);
+        await prefs.setString('user_gender', _selectedGender);
+        await prefs.setString('user_membership', _membershipController.text);
+
+        print("EditProfilePage: Saved basic profile data to SharedPreferences");
 
         // Update registration date if it doesn't exist
-        if (prefs.getString('userRegistrationDate') == null) {
-          await prefs.setString(
-            'userRegistrationDate',
-            DateTime.now().toIso8601String(),
+        if (prefs.getString('user_registration_date') == null) {
+          final now = DateTime.now();
+          final formattedDate = '${now.day}/${now.month}/${now.year}';
+          await prefs.setString('user_registration_date', formattedDate);
+          print(
+            "EditProfilePage: Created new registration date: $formattedDate",
           );
         }
+
+        // Keep fully cached status enabled
+        await prefs.setBool('user_data_fully_cached', true);
+        print("EditProfilePage: Marked data as fully cached");
 
         // Show success message
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Profile updated successfully!')),
           );
+          print("EditProfilePage: Profile updated successfully");
         }
 
         // Return to profile page
         if (mounted) {
-          Navigator.pop(context);
+          Navigator.pop(context, true);
         }
       } else {
+        print("EditProfilePage: No current user found");
         setState(() {
           _errorMessage = 'User not authenticated. Please log in again.';
         });
       }
     } catch (error) {
+      print("EditProfilePage: Error saving profile: $error");
       setState(() {
         _errorMessage = 'Failed to update profile: $error';
       });
@@ -186,7 +207,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context, false),
         ),
         title: Row(
           mainAxisAlignment: MainAxisAlignment.center,

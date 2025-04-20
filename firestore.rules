@@ -1,0 +1,71 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Check if the user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    // Check if the user is the admin
+    function isAdmin() {
+      return request.auth.token.email == 'samarthad@gmail.com' || 
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
+    
+    // Check if the user is accessing their own data
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    // Users collection rules
+    match /users/{userId} {
+      // Anyone can create their own user document
+      // Only the owner or admin can read/update their document
+      // Only admin can delete users
+      allow create: if isAuthenticated() && isOwner(userId);
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow delete: if isAuthenticated() && isAdmin();
+    }
+    
+    // Events collection rules
+    match /events/{eventId} {
+      // Anyone can read events
+      // Only admin can create/update/delete events
+      allow read: if true;
+      allow create, update, delete: if isAuthenticated() && isAdmin();
+    }
+    
+    // Donations collection rules
+    match /donations/{donationId} {
+      // Authenticated users can create donations
+      // Users can read their own donations
+      // Only admin can read all, update or delete donations
+      allow create: if isAuthenticated();
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow update, delete: if isAuthenticated() && isAdmin();
+    }
+    
+    // Announcements collection rules
+    match /announcements/{announcementId} {
+      // Anyone can read announcements
+      // Only admin can create/update/delete announcements
+      allow read: if true;
+      allow create, update, delete: if isAuthenticated() && isAdmin();
+    }
+    
+    // App info collection rules
+    match /app_info/{docId} {
+      // Anyone can read app info
+      // Only admin can create/update/delete app info
+      allow read: if true;
+      allow create, update, delete: if isAuthenticated() && isAdmin();
+    }
+    
+    // Any other collection requires admin access
+    match /{document=**} {
+      allow read, write: if isAuthenticated() && isAdmin();
+    }
+  }
+} 

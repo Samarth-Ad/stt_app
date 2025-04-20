@@ -39,41 +39,69 @@ class _HomePageState extends State<HomePage> {
     const UserProfilePage(), // Profile page included directly
   ];
 
+  void _onTabTapped(int index) {
+    // If we're already on this tab, don't do anything
+    if (_selectedIndex == index) return;
+
+    // Update local state first
+    setState(() {
+      _selectedIndex = index;
+      // Keep track of the current tab
+      currentHomeTab = index;
+    });
+
+    // If profile tab is selected, use safe navigation
+    if (index == 4) {
+      try {
+        Navigator.of(context).pushReplacementNamed('/profile', arguments: true);
+      } catch (e) {
+        print('Error navigating to profile tab: $e');
+        // If navigation fails, at least the UI will show the profile tab
+        // due to the setState above
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
-        // If we're not on the home tab, go to home tab instead of exiting
-        if (_selectedIndex != 2) {
-          setState(() {
-            _selectedIndex = 2;
-            currentHomeTab = 2;
-          });
-          return false; // Don't close the app
-        }
+        try {
+          // If we're not on the home tab, go to home tab instead of exiting
+          if (_selectedIndex != 2) {
+            setState(() {
+              _selectedIndex = 2;
+              currentHomeTab = 2;
+            });
+            return false; // Don't close the app
+          }
 
-        // Show exit confirmation dialog on home tab
-        return await showDialog<bool>(
-              context: context,
-              builder:
-                  (context) => AlertDialog(
-                    title: const Text('Exit App?'),
-                    content: const Text(
-                      'Are you sure you want to exit the app?',
+          // Show exit confirmation dialog on home tab
+          return await showDialog<bool>(
+                context: context,
+                builder:
+                    (context) => AlertDialog(
+                      title: const Text('Exit App?'),
+                      content: const Text(
+                        'Are you sure you want to exit the app?',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(false),
+                          child: const Text('No'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.of(context).pop(true),
+                          child: const Text('Yes'),
+                        ),
+                      ],
                     ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(false),
-                        child: const Text('No'),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(true),
-                        child: const Text('Yes'),
-                      ),
-                    ],
-                  ),
-            ) ??
-            false;
+              ) ??
+              false;
+        } catch (e) {
+          print('Error in WillPopScope: $e');
+          return false; // Don't exit on error
+        }
       },
       child: Scaffold(
         body: SafeArea(
@@ -85,13 +113,7 @@ class _HomePageState extends State<HomePage> {
           unselectedItemColor: Colors.grey,
           backgroundColor: Colors.white,
           currentIndex: _selectedIndex,
-          onTap: (index) {
-            setState(() {
-              _selectedIndex = index;
-              // Keep track of the current tab
-              currentHomeTab = index;
-            });
-          },
+          onTap: _onTabTapped,
           items: const [
             BottomNavigationBarItem(
               icon: Icon(Icons.history),

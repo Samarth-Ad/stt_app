@@ -195,7 +195,7 @@ class HomeContent extends StatelessWidget {
                 ),
                 _buildActionButton(
                   icon: Icons.touch_app,
-                  label: 'Sign Up For\nDrives',
+                  label: 'Sign Up For Drives',
                   onTap: () {
                     // Update the current tab and navigate to a new HomePage instance
                     currentHomeTab = 1; // Events tab
@@ -257,23 +257,29 @@ class HomeContent extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: 100,
+        height: 90,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: const Color(0xFF8B4513),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, color: Colors.white, size: 24),
             const SizedBox(height: 8),
-            Text(
-              label,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
+            Flexible(
+              child: Text(
+                label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
           ],

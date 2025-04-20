@@ -57,13 +57,28 @@ class _DonationsPageState extends State<DonationsPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Your Impact',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF8B4513),
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Your Impact',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF8B4513),
+                          ),
+                        ),
+                        ElevatedButton(
+                          onPressed: () {
+                            Navigator.pushNamed(context, '/donation-form');
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF8B4513),
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('Donate Now'),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 16),
                     Row(
@@ -178,7 +193,7 @@ class _DonationsPageState extends State<DonationsPage> {
                 title: 'UPI Payment',
                 subtitle: 'Pay using any UPI app',
                 onTap: () {
-                  // Handle UPI payment
+                  Navigator.pushNamed(context, '/donation-form');
                 },
               ),
 
@@ -188,7 +203,7 @@ class _DonationsPageState extends State<DonationsPage> {
                 title: 'Credit/Debit Card',
                 subtitle: 'Pay using credit or debit card',
                 onTap: () {
-                  // Handle card payment
+                  Navigator.pushNamed(context, '/donation-form');
                 },
               ),
 
@@ -198,7 +213,7 @@ class _DonationsPageState extends State<DonationsPage> {
                 title: 'Net Banking',
                 subtitle: 'Pay using net banking',
                 onTap: () {
-                  // Handle net banking
+                  Navigator.pushNamed(context, '/donation-form');
                 },
               ),
 

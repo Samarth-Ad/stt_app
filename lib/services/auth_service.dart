@@ -59,6 +59,16 @@ class AuthService {
         password: password,
       );
 
+      // Create a new user document in Firestore
+      await _firestore.collection('users').doc(result.user!.uid).set({
+        'email': email,
+        'name': '',
+        'phone': '',
+        'gender': '',
+        'membership': 'Member',
+        'registrationDate': FieldValue.serverTimestamp(),
+      });
+
       // Store user data in local storage after successful signup
       await _saveUserToLocalStorage(result.user);
 

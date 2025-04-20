@@ -11,11 +11,11 @@ class CatalogPage extends StatefulWidget {
 class _CatalogPageState extends State<CatalogPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  final List<Product> _products = [
+  final List<Product> _tshirtProducts = [
     Product(
       id: '1',
-      name: 'T-Shirt SPANISH',
-      imageUrl: 'assets/products/tshirt_red.png',
+      name: 'T-Shirt Style 1',
+      imageUrl: 'assets/Tshirt_1.jpg',
       price: 15,
       rating: 4.5,
       reviews: 128,
@@ -24,27 +24,32 @@ class _CatalogPageState extends State<CatalogPage>
     ),
     Product(
       id: '2',
-      name: 'Blouse',
-      imageUrl: 'assets/products/blouse_white.png',
-      price: 25,
-      rating: 5.0,
-      reviews: 210,
+      name: 'T-Shirt Style 2',
+      imageUrl: 'assets/TShirt_2.jpg',
+      price: 18,
+      rating: 4.8,
+      reviews: 95,
     ),
+  ];
+
+  final List<Product> _ganpatiProducts = [
     Product(
       id: '3',
-      name: 'Shirt',
-      imageUrl: 'assets/products/shirt_green.png',
-      price: 17,
+      name: 'Ganpati Murti Classic',
+      imageUrl: 'assets/ganpatiMurti_1.jpg',
+      price: 350,
+      rating: 5.0,
+      reviews: 210,
+      isOnSale: true,
+      discountPercentage: 10,
     ),
     Product(
       id: '4',
-      name: 'Light blouse',
-      imageUrl: 'assets/products/blouse_yellow.png',
-      price: 14,
-      rating: 4.8,
+      name: 'Ganpati Murti Premium',
+      imageUrl: 'assets/ganpatiMurti_2.jpg',
+      price: 500,
+      rating: 4.9,
       reviews: 185,
-      isOnSale: true,
-      discountPercentage: 20,
     ),
   ];
 
@@ -89,14 +94,14 @@ class _CatalogPageState extends State<CatalogPage>
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildClothingGrid(),
-          const Center(child: Text('Coming Soon')),
+          _buildProductGrid(_tshirtProducts),
+          _buildProductGrid(_ganpatiProducts),
         ],
       ),
     );
   }
 
-  Widget _buildClothingGrid() {
+  Widget _buildProductGrid(List<Product> products) {
     return GridView.builder(
       padding: const EdgeInsets.all(16),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -105,9 +110,9 @@ class _CatalogPageState extends State<CatalogPage>
         crossAxisSpacing: 16,
         mainAxisSpacing: 16,
       ),
-      itemCount: _products.length,
+      itemCount: products.length,
       itemBuilder: (context, index) {
-        final product = _products[index];
+        final product = products[index];
         return _buildProductCard(product);
       },
     );
@@ -199,7 +204,7 @@ class _CatalogPageState extends State<CatalogPage>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '\$${product.price}',
+                  '\₹${product.price}',
                   style: const TextStyle(
                     color: Color(0xFF8B4513),
                     fontWeight: FontWeight.bold,

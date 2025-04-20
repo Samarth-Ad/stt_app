@@ -13,6 +13,7 @@ import 'package:stt_app/UserEnd/Ecomm-Section/pages/cart_page.dart';
 import 'package:stt_app/UserEnd/Pages/events/events_page.dart';
 import 'package:stt_app/UserEnd/Pages/events/events_history_page.dart';
 import 'package:stt_app/UserEnd/Pages/donations/donations_page.dart';
+import 'package:stt_app/UserEnd/Pages/donations/donations_form_page.dart';
 import 'package:stt_app/firebase_options.dart';
 import 'package:stt_app/services/auth_service.dart';
 
@@ -115,6 +116,7 @@ class _MyAppState extends State<MyApp> {
         '/events': (context) => const EventsPage(),
         '/events-history': (context) => const EventsHistoryPage(),
         '/donations': (context) => const DonationsPage(),
+        '/donation-form': (context) => const DonationsFormPage(),
       },
       // Handle profile navigation
       onGenerateRoute: (settings) {

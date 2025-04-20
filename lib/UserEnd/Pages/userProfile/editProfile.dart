@@ -144,7 +144,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
         final prefs = await SharedPreferences.getInstance();
         print("EditProfilePage: SharedPreferences instance created");
 
-        // Save basic profile data
+        // Save basic profile data to SharedPreferences
         await prefs.setString('user_display_name', _nameController.text);
         await prefs.setString('user_email', _emailController.text);
         await prefs.setString('user_phone', _phoneController.text);
@@ -154,13 +154,36 @@ class _EditProfilePageState extends State<EditProfilePage> {
         print("EditProfilePage: Saved basic profile data to SharedPreferences");
 
         // Update registration date if it doesn't exist
+        String registrationDate;
         if (prefs.getString('user_registration_date') == null) {
           final now = DateTime.now();
-          final formattedDate = '${now.day}/${now.month}/${now.year}';
-          await prefs.setString('user_registration_date', formattedDate);
+          registrationDate = '${now.day}/${now.month}/${now.year}';
+          await prefs.setString('user_registration_date', registrationDate);
           print(
-            "EditProfilePage: Created new registration date: $formattedDate",
+            "EditProfilePage: Created new registration date: $registrationDate",
           );
+        } else {
+          registrationDate = prefs.getString('user_registration_date') ?? '';
+        }
+
+        // Save user data to Firestore
+        try {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(currentUser.uid)
+              .set({
+                'name': _nameController.text,
+                'email': _emailController.text,
+                'phone': _phoneController.text,
+                'gender': _selectedGender,
+                'membership': _membershipController.text,
+                'registrationDate': FieldValue.serverTimestamp(),
+              }, SetOptions(merge: true));
+          print("EditProfilePage: Saved profile data to Firestore");
+        } catch (firestoreError) {
+          print("EditProfilePage: Error saving to Firestore: $firestoreError");
+          // Continue execution even if Firestore update fails
+          // This way, at least local data is updated
         }
 
         // Keep fully cached status enabled

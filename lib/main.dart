@@ -10,6 +10,7 @@ import 'package:stt_app/UserEnd/Pages/homePage.dart';
 import 'package:stt_app/UserEnd/Pages/userProfile/editProfile.dart';
 import 'package:stt_app/UserEnd/Ecomm-Section/pages/catalog_page.dart';
 import 'package:stt_app/UserEnd/Ecomm-Section/pages/cart_page.dart';
+import 'package:stt_app/UserEnd/Ecomm-Section/pages/order_history_page.dart';
 import 'package:stt_app/UserEnd/Pages/events/events_page.dart';
 import 'package:stt_app/UserEnd/Pages/events/events_history_page.dart';
 import 'package:stt_app/UserEnd/Pages/donations/donations_page.dart';
@@ -112,6 +113,7 @@ class _MyAppState extends State<MyApp> {
             (context) => const HomePage(initialTab: 2), // Always go to home tab
         '/catalog': (context) => const CatalogPage(),
         '/cart': (context) => const CartPage(),
+        '/orders': (context) => const OrderHistoryPage(),
         '/contact-us': (context) => const ContactUsPage(),
         '/events': (context) => const EventsPage(),
         '/events-history': (context) => const EventsHistoryPage(),

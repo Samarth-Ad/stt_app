@@ -40,6 +40,7 @@ dependencies:
   cloud_firestore: ^4.17.5
   intl: ^0.18.1
   shared_preferences: ^2.2.2
+  uuid: ^4.3.2
 
 dev_dependencies:
   flutter_test:

@@ -9,6 +9,7 @@ class Product {
   final int reviews;
   final bool isOnSale;
   final double discountPercentage;
+  final String category;
   int quantity;
 
   Product({
@@ -22,6 +23,7 @@ class Product {
     this.reviews = 0,
     this.isOnSale = false,
     this.discountPercentage = 0.0,
+    this.category = 'clothing',
     this.quantity = 1,
   });
 

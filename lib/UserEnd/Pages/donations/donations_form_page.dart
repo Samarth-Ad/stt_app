@@ -16,6 +16,9 @@ class _DonationsFormPageState extends State<DonationsFormPage> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _transactionIdController =
+      TextEditingController();
+  final TextEditingController _amountController = TextEditingController();
 
   // Membership status
   String _membershipStatus = 'Member';
@@ -25,6 +28,30 @@ class _DonationsFormPageState extends State<DonationsFormPage> {
   void initState() {
     super.initState();
     _loadUserData();
+
+    // We need to delay this to allow navigation arguments to be available
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _processRouteArguments();
+    });
+  }
+
+  void _processRouteArguments() {
+    final Map<String, dynamic>? args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+
+    if (args != null) {
+      setState(() {
+        if (args.containsKey('transactionId')) {
+          _transactionIdController.text = args['transactionId'] as String;
+        }
+        if (args.containsKey('donorName')) {
+          _nameController.text = args['donorName'] as String;
+        }
+        if (args.containsKey('amount')) {
+          _amountController.text = args['amount'] as String;
+        }
+      });
+    }
   }
 
   Future<void> _loadUserData() async {
@@ -108,14 +135,24 @@ class _DonationsFormPageState extends State<DonationsFormPage> {
         print("Created user document in Firestore");
       }
 
-      // Now save the donation
+      // Parse amount from text field
+      double amount = 0;
+      try {
+        amount = double.parse(_amountController.text);
+      } catch (e) {
+        print('Error parsing amount: $e');
+        amount = 0; // Default to 0 if parsing fails
+      }
+
+      // Now save the donation with transaction ID
       await FirebaseFirestore.instance.collection('donations').add({
         'name': _nameController.text,
         'email': _emailController.text,
         'phone': _phoneController.text,
         'membership': _membershipStatus,
         'userId': user.uid,
-        'amount': 500, // Fixed amount or get from a controller
+        'amount': amount,
+        'transactionId': _transactionIdController.text,
         'timestamp': FieldValue.serverTimestamp(),
         'status': 'pending',
       });
@@ -162,8 +199,8 @@ class _DonationsFormPageState extends State<DonationsFormPage> {
         builder: (BuildContext context) {
           return AlertDialog(
             title: const Text('Confirm Donation'),
-            content: const Text(
-              'Do you want to proceed with your donation of ₹500?',
+            content: Text(
+              'Do you want to proceed with your donation of ₹${_amountController.text}?',
             ),
             actions: [
               TextButton(
@@ -189,6 +226,8 @@ class _DonationsFormPageState extends State<DonationsFormPage> {
     _nameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
+    _transactionIdController.dispose();
+    _amountController.dispose();
     super.dispose();
   }
 
@@ -241,6 +280,26 @@ class _DonationsFormPageState extends State<DonationsFormPage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
+                              // Transaction ID field
+                              TextFormField(
+                                controller: _transactionIdController,
+                                decoration: InputDecoration(
+                                  labelText: 'Transaction ID',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                ),
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Please enter the transaction ID';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 16),
+
                               // Name field
                               TextFormField(
                                 controller: _nameController,
@@ -307,6 +366,32 @@ class _DonationsFormPageState extends State<DonationsFormPage> {
                               ),
                               const SizedBox(height: 16),
 
+                              // Amount field
+                              TextFormField(
+                                controller: _amountController,
+                                keyboardType: TextInputType.number,
+                                decoration: InputDecoration(
+                                  labelText: 'Amount (₹)',
+                                  border: OutlineInputBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  filled: true,
+                                  fillColor: Colors.white,
+                                ),
+                                validator: (value) {
+                                  if (value == null || value.isEmpty) {
+                                    return 'Please enter the donation amount';
+                                  }
+                                  try {
+                                    double.parse(value);
+                                  } catch (e) {
+                                    return 'Please enter a valid amount';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 16),
+
                               // Membership status
                               TextFormField(
                                 initialValue: _membershipStatus,
@@ -337,7 +422,7 @@ class _DonationsFormPageState extends State<DonationsFormPage> {
                                   ),
                                 ),
                                 child: const Text(
-                                  'PROCEED FOR DONATION',
+                                  'SUBMIT DONATION',
                                   style: TextStyle(
                                     fontSize: 16,
                                     fontWeight: FontWeight.bold,

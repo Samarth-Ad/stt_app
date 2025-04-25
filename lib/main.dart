@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:stt_app/Admin/admin_test.dart';
+import 'package:stt_app/Admin/admin_dashboard.dart';
 import 'package:stt_app/Authentication/loginPage.dart';
 import 'package:stt_app/Authentication/signUp_page.dart';
 import 'package:stt_app/UserEnd/Pages/contact_us/contact_usPage.dart';

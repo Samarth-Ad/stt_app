@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:stt_app/Admin/Donations/manage_donations.dart';
 import 'package:stt_app/Admin/events/manage_events_page.dart';
 import 'package:stt_app/Admin/users/manage_users_page.dart';
 import 'package:stt_app/main.dart'; // Import to access isUserAdmin function
@@ -159,10 +160,14 @@ class _AdminPageState extends State<AdminPage> {
               ),
               _buildAdminFeatureCard(
                 icon: Icons.volunteer_activism,
-                title: "Manage Donations",
+                title: "See Donations",
                 onTap: () {
-                  // TODO: Navigate to donations management
-                  _showFeatureNotImplemented(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ManageDonationsPage(),
+                    ),
+                  );
                 },
               ),
               _buildAdminFeatureCard(
@@ -176,7 +181,6 @@ class _AdminPageState extends State<AdminPage> {
                     ),
                   );
                 },
-                isHighlighted: true,
               ),
               _buildAdminFeatureCard(
                 icon: Icons.shopping_cart,
@@ -313,13 +317,13 @@ class _AdminPageState extends State<AdminPage> {
       child: Card(
         elevation: 2,
         color: isHighlighted ? const Color(0xFF8B4513).withOpacity(0.1) : null,
-        shape:
-            isHighlighted
-                ? RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  side: const BorderSide(color: Color(0xFF8B4513), width: 1),
-                )
-                : null,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side:
+              isHighlighted
+                  ? const BorderSide(color: Color(0xFF8B4513), width: 1)
+                  : BorderSide.none,
+        ),
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(

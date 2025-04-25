@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:stt_app/models/event_model.dart';
+import 'package:stt_app/services/safe_registration_handler.dart';
 
 class EventRegistrationsPage extends StatefulWidget {
   final Event event;
@@ -15,126 +16,156 @@ class EventRegistrationsPage extends StatefulWidget {
 }
 
 class _EventRegistrationsPageState extends State<EventRegistrationsPage> {
-  bool _isLoading = true;
-  List<Map<String, dynamic>> _registeredUsers = [];
+  bool _isLoading = false;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   bool _exportingData = false;
 
+  // Store the registration count directly, not the full user data
+  int get registrationCount => widget.event.registeredUsers.length;
+
+  // Store currently expanded user details
+  String? _expandedUserId;
+  Map<String, dynamic>? _expandedUserData;
+  bool _loadingUserDetails = false;
+
   @override
-  void initState() {
-    super.initState();
-    _fetchRegisteredUsers();
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
-  Future<void> _fetchRegisteredUsers() async {
+  // Fetch a single user's details
+  Future<void> _fetchUserDetails(String userId) async {
+    if (_expandedUserId == userId && _expandedUserData != null) {
+      // Already loaded this user
+      return;
+    }
+
     setState(() {
-      _isLoading = true;
+      _loadingUserDetails = true;
+      _expandedUserId = userId;
+      _expandedUserData = null;
     });
 
     try {
-      final List<String> userIds = widget.event.registeredUsers;
+      // Get user document
+      final userDoc = await _firestore.collection('users').doc(userId).get();
 
-      if (userIds.isEmpty) {
-        setState(() {
-          _registeredUsers = [];
-          _isLoading = false;
-        });
-        return;
+      if (!userDoc.exists) {
+        throw Exception('User not found');
       }
 
-      final List<Map<String, dynamic>> userData = [];
+      // Get complete user data with all fields
+      final userData = userDoc.data() ?? {};
+      userData['id'] = userId;
 
-      // Due to Firestore limitations, fetch users in batches if there are many
-      for (int i = 0; i < userIds.length; i += 10) {
-        final int end = (i + 10 < userIds.length) ? i + 10 : userIds.length;
-        final List<String> batch = userIds.sublist(i, end);
-
-        final usersSnapshot =
-            await FirebaseFirestore.instance
+      // Get registration timestamp
+      try {
+        final registrationDoc =
+            await _firestore
                 .collection('users')
-                .where(FieldPath.documentId, whereIn: batch)
+                .doc(userId)
+                .collection('registrations')
+                .doc(widget.event.id)
                 .get();
 
-        for (final doc in usersSnapshot.docs) {
-          final user = doc.data();
-          user['id'] = doc.id;
+        if (registrationDoc.exists) {
+          final data = registrationDoc.data() ?? {};
+          final Timestamp? timestamp = data['registrationDate'] as Timestamp?;
+          userData['registrationDate'] = timestamp?.toDate() ?? DateTime.now();
 
-          // Get registration timestamp from the user's registrations subcollection
-          try {
-            final registrationDoc =
-                await FirebaseFirestore.instance
-                    .collection('users')
-                    .doc(doc.id)
-                    .collection('registrations')
-                    .doc(widget.event.id)
-                    .get();
-
-            if (registrationDoc.exists) {
-              final registrationData = registrationDoc.data();
-              final Timestamp? timestamp =
-                  registrationData?['registrationDate'] as Timestamp?;
-              user['registrationDate'] = timestamp?.toDate() ?? DateTime.now();
-            }
-          } catch (e) {
-            print('Error fetching registration timestamp: $e');
+          // Include any additional registration details
+          if (data.containsKey('status')) {
+            userData['registrationStatus'] = data['status'];
           }
 
-          userData.add(user);
+          if (data.containsKey('notes')) {
+            userData['registrationNotes'] = data['notes'];
+          }
         }
+      } catch (e) {
+        print('Error fetching registration timestamp: $e');
+        // Set default registration date
+        userData['registrationDate'] = DateTime.now();
       }
 
-      // Sort by registration timestamp, most recent first
-      userData.sort((a, b) {
-        final DateTime dateA = a['registrationDate'] ?? DateTime.now();
-        final DateTime dateB = b['registrationDate'] ?? DateTime.now();
-        return dateB.compareTo(dateA);
-      });
+      // Double-check to ensure phone number is included
+      if (!userData.containsKey('phone') || userData['phone'] == null) {
+        // Add a placeholder if phone is missing
+        userData['phone'] = 'No phone number provided';
+      }
 
       setState(() {
-        _registeredUsers = userData;
-        _isLoading = false;
+        _expandedUserData = userData;
+        _loadingUserDetails = false;
       });
     } catch (e) {
-      print('Error fetching registered users: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading registered users: $e')),
-      );
+      print('Error fetching user details: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Error loading user details: $e')));
       setState(() {
-        _isLoading = false;
+        _expandedUserData = null;
+        _loadingUserDetails = false;
+        _expandedUserId = null;
       });
     }
   }
 
-  List<Map<String, dynamic>> get _filteredUsers {
-    if (_searchQuery.isEmpty) {
-      return _registeredUsers;
-    }
+  // Check if a user matches the search query
+  Future<bool> _checkIfUserMatchesSearch(String userId, String query) async {
+    if (query.isEmpty) return true;
 
-    final query = _searchQuery.toLowerCase();
-    return _registeredUsers.where((user) {
-      final name = (user['name'] ?? '').toLowerCase();
-      final email = (user['email'] ?? '').toLowerCase();
-      final phone = (user['phone'] ?? '').toLowerCase();
+    try {
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      if (!userDoc.exists) return false;
 
+      final data = userDoc.data() ?? {};
+      final name = ((data['name'] ?? '') as String).toLowerCase();
+      final email = ((data['email'] ?? '') as String).toLowerCase();
+      final phone = ((data['phone'] ?? '') as String).toLowerCase();
+
+      query = query.toLowerCase();
       return name.contains(query) ||
           email.contains(query) ||
           phone.contains(query);
-    }).toList();
+    } catch (e) {
+      print('Error checking if user matches search: $e');
+      return false;
+    }
+  }
+
+  // Filter the user IDs based on search query
+  Future<List<String>> _getFilteredUserIds() async {
+    final List<String> userIds = widget.event.registeredUsers;
+
+    if (_searchQuery.isEmpty) {
+      return userIds;
+    }
+
+    // Filter user IDs based on search
+    List<String> filteredIds = [];
+    for (final userId in userIds) {
+      final matches = await _checkIfUserMatchesSearch(userId, _searchQuery);
+      if (matches) {
+        filteredIds.add(userId);
+      }
+    }
+
+    return filteredIds;
   }
 
   Future<void> _exportRegistrations() async {
+    // Implementation for export functionality
     setState(() {
       _exportingData = true;
     });
 
     try {
-      // This is where you would implement export functionality
-      // For example, generating a CSV file and sharing it
-
-      await Future.delayed(
-        const Duration(seconds: 2),
-      ); // Simulate processing time
-
+      // Simulate export operation
+      await Future.delayed(const Duration(seconds: 2));
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Registrations exported successfully')),
       );
@@ -160,7 +191,7 @@ class _EventRegistrationsPageState extends State<EventRegistrationsPage> {
         backgroundColor: const Color(0xFF8B4513),
         elevation: 0,
         actions: [
-          if (!_isLoading && _registeredUsers.isNotEmpty)
+          if (registrationCount > 0)
             IconButton(
               icon:
                   _exportingData
@@ -230,7 +261,7 @@ class _EventRegistrationsPageState extends State<EventRegistrationsPage> {
                     const Icon(Icons.people, size: 16, color: Colors.grey),
                     const SizedBox(width: 6),
                     Text(
-                      '${widget.event.registeredUsers.length} registrations',
+                      '$registrationCount registrations',
                       style: const TextStyle(
                         fontWeight: FontWeight.bold,
                         color: Colors.grey,
@@ -243,10 +274,11 @@ class _EventRegistrationsPageState extends State<EventRegistrationsPage> {
           ),
 
           // Search bar
-          if (!_isLoading && _registeredUsers.isNotEmpty)
+          if (registrationCount > 0)
             Padding(
               padding: const EdgeInsets.all(16),
               child: TextField(
+                controller: _searchController,
                 decoration: InputDecoration(
                   hintText: 'Search by name, email, or phone',
                   prefixIcon: const Icon(Icons.search),
@@ -255,6 +287,18 @@ class _EventRegistrationsPageState extends State<EventRegistrationsPage> {
                     borderSide: BorderSide(color: Colors.grey.shade300),
                   ),
                   contentPadding: const EdgeInsets.symmetric(vertical: 0),
+                  suffixIcon:
+                      _searchQuery.isNotEmpty
+                          ? IconButton(
+                            icon: const Icon(Icons.clear),
+                            onPressed: () {
+                              setState(() {
+                                _searchController.clear();
+                                _searchQuery = '';
+                              });
+                            },
+                          )
+                          : null,
                 ),
                 onChanged: (value) {
                   setState(() {
@@ -273,110 +317,457 @@ class _EventRegistrationsPageState extends State<EventRegistrationsPage> {
                         color: Color(0xFF8B4513),
                       ),
                     )
-                    : _registeredUsers.isEmpty
+                    : registrationCount == 0
                     ? const Center(
                       child: Text(
                         'No registrations yet',
                         style: TextStyle(fontSize: 16, color: Colors.grey),
                       ),
                     )
-                    : _filteredUsers.isEmpty
-                    ? const Center(
-                      child: Text(
-                        'No results found',
-                        style: TextStyle(fontSize: 16, color: Colors.grey),
-                      ),
-                    )
-                    : ListView.builder(
-                      itemCount: _filteredUsers.length,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemBuilder: (context, index) {
-                        final user = _filteredUsers[index];
-                        return _buildUserCard(user);
+                    : FutureBuilder<List<String>>(
+                      future: _getFilteredUserIds(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Center(
+                            child: CircularProgressIndicator(
+                              color: Color(0xFF8B4513),
+                            ),
+                          );
+                        }
+
+                        if (snapshot.hasError) {
+                          return Center(
+                            child: Text('Error: ${snapshot.error}'),
+                          );
+                        }
+
+                        final userIds = snapshot.data ?? [];
+
+                        if (userIds.isEmpty) {
+                          return const Center(
+                            child: Text(
+                              'No results found',
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          );
+                        }
+
+                        return ListView.builder(
+                          itemCount: userIds.length,
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemBuilder: (context, index) {
+                            final userId = userIds[index];
+                            final isExpanded = userId == _expandedUserId;
+
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              elevation: 1,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: InkWell(
+                                onTap: () {
+                                  if (isExpanded) {
+                                    setState(() {
+                                      _expandedUserId = null;
+                                      _expandedUserData = null;
+                                    });
+                                  } else {
+                                    _fetchUserDetails(userId);
+                                  }
+                                },
+                                borderRadius: BorderRadius.circular(12),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      // Basic user info (always shown)
+                                      Row(
+                                        children: [
+                                          FutureBuilder<DocumentSnapshot>(
+                                            future:
+                                                _firestore
+                                                    .collection('users')
+                                                    .doc(userId)
+                                                    .get(),
+                                            builder: (context, snapshot) {
+                                              if (snapshot.connectionState ==
+                                                  ConnectionState.waiting) {
+                                                return CircleAvatar(
+                                                  backgroundColor:
+                                                      Colors.brown.shade100,
+                                                  child: const SizedBox(
+                                                    width: 20,
+                                                    height: 20,
+                                                    child:
+                                                        CircularProgressIndicator(
+                                                          strokeWidth: 2,
+                                                          color: Color(
+                                                            0xFF8B4513,
+                                                          ),
+                                                        ),
+                                                  ),
+                                                );
+                                              }
+
+                                              // Handle possible errors
+                                              if (snapshot.hasError ||
+                                                  !snapshot.hasData ||
+                                                  !snapshot.data!.exists) {
+                                                return CircleAvatar(
+                                                  backgroundColor:
+                                                      Colors.brown.shade100,
+                                                  child: const Text(
+                                                    '?',
+                                                    style: TextStyle(
+                                                      color: Color(0xFF8B4513),
+                                                      fontWeight:
+                                                          FontWeight.bold,
+                                                    ),
+                                                  ),
+                                                );
+                                              }
+
+                                              final data =
+                                                  snapshot.data?.data()
+                                                      as Map<
+                                                        String,
+                                                        dynamic
+                                                      >? ??
+                                                  {};
+                                              final name =
+                                                  data['name'] as String? ??
+                                                  'User';
+
+                                              return CircleAvatar(
+                                                backgroundColor:
+                                                    Colors.brown.shade100,
+                                                child: Text(
+                                                  name.isNotEmpty
+                                                      ? name
+                                                          .substring(0, 1)
+                                                          .toUpperCase()
+                                                      : 'U',
+                                                  style: const TextStyle(
+                                                    color: Color(0xFF8B4513),
+                                                    fontWeight: FontWeight.bold,
+                                                  ),
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Expanded(
+                                            child: FutureBuilder<
+                                              DocumentSnapshot
+                                            >(
+                                              future:
+                                                  _firestore
+                                                      .collection('users')
+                                                      .doc(userId)
+                                                      .get(),
+                                              builder: (context, snapshot) {
+                                                if (snapshot.connectionState ==
+                                                    ConnectionState.waiting) {
+                                                  return Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Container(
+                                                        height: 16,
+                                                        width: 100,
+                                                        decoration: BoxDecoration(
+                                                          color:
+                                                              Colors
+                                                                  .grey
+                                                                  .shade300,
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                4,
+                                                              ),
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 4),
+                                                      Container(
+                                                        height: 12,
+                                                        width: 150,
+                                                        decoration: BoxDecoration(
+                                                          color:
+                                                              Colors
+                                                                  .grey
+                                                                  .shade200,
+                                                          borderRadius:
+                                                              BorderRadius.circular(
+                                                                4,
+                                                              ),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  );
+                                                }
+
+                                                // Handle cases when user data doesn't exist
+                                                if (snapshot.hasError ||
+                                                    !snapshot.hasData ||
+                                                    !snapshot.data!.exists) {
+                                                  return Column(
+                                                    crossAxisAlignment:
+                                                        CrossAxisAlignment
+                                                            .start,
+                                                    children: [
+                                                      Text(
+                                                        'Unknown User',
+                                                        style: const TextStyle(
+                                                          fontSize: 16,
+                                                          fontWeight:
+                                                              FontWeight.bold,
+                                                        ),
+                                                      ),
+                                                      Text(
+                                                        'User data unavailable',
+                                                        style: const TextStyle(
+                                                          color: Colors.grey,
+                                                          fontSize: 14,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  );
+                                                }
+
+                                                final data =
+                                                    snapshot.data?.data()
+                                                        as Map<
+                                                          String,
+                                                          dynamic
+                                                        >? ??
+                                                    {};
+                                                final name =
+                                                    data['name'] as String? ??
+                                                    'Unknown User';
+                                                final email =
+                                                    data['email'] as String? ??
+                                                    'No email';
+                                                final phone =
+                                                    data['phone'] as String? ??
+                                                    'No phone';
+
+                                                return Column(
+                                                  crossAxisAlignment:
+                                                      CrossAxisAlignment.start,
+                                                  children: [
+                                                    Text(
+                                                      name,
+                                                      style: const TextStyle(
+                                                        fontSize: 16,
+                                                        fontWeight:
+                                                            FontWeight.bold,
+                                                      ),
+                                                    ),
+                                                    Text(
+                                                      email,
+                                                      style: const TextStyle(
+                                                        color: Colors.grey,
+                                                        fontSize: 14,
+                                                      ),
+                                                    ),
+                                                    SizedBox(height: 4),
+                                                    Row(
+                                                      children: [
+                                                        Icon(
+                                                          Icons.phone,
+                                                          size: 14,
+                                                          color: Colors.grey,
+                                                        ),
+                                                        SizedBox(width: 4),
+                                                        Text(
+                                                          phone,
+                                                          style: TextStyle(
+                                                            color: Colors.grey,
+                                                            fontSize: 14,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ],
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                          Icon(
+                                            isExpanded
+                                                ? Icons.keyboard_arrow_up
+                                                : Icons.keyboard_arrow_down,
+                                            color: Colors.grey,
+                                          ),
+                                        ],
+                                      ),
+
+                                      // Expanded user details (shown only when expanded)
+                                      if (isExpanded)
+                                        _loadingUserDetails
+                                            ? const Padding(
+                                              padding: EdgeInsets.symmetric(
+                                                vertical: 16,
+                                              ),
+                                              child: Center(
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      color: Color(0xFF8B4513),
+                                                      strokeWidth: 2,
+                                                    ),
+                                              ),
+                                            )
+                                            : _expandedUserData != null
+                                            ? Padding(
+                                              padding: const EdgeInsets.only(
+                                                top: 16,
+                                              ),
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  const Divider(),
+                                                  const SizedBox(height: 8),
+                                                  Row(
+                                                    children: [
+                                                      const Icon(
+                                                        Icons.access_time,
+                                                        size: 14,
+                                                        color: Colors.grey,
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      Text(
+                                                        _expandedUserData!['registrationDate'] !=
+                                                                null
+                                                            ? 'Registered ${DateFormat('MMM d, y').format(_expandedUserData!['registrationDate'])}'
+                                                            : 'Registered',
+                                                        style: const TextStyle(
+                                                          color: Colors.grey,
+                                                          fontSize: 14,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  const SizedBox(height: 8),
+                                                  Row(
+                                                    children: [
+                                                      const Icon(
+                                                        Icons.badge,
+                                                        size: 14,
+                                                        color: Colors.grey,
+                                                      ),
+                                                      const SizedBox(width: 4),
+                                                      Text(
+                                                        'User ID: ${_expandedUserData!['id'] ?? 'Unknown'}',
+                                                        style: const TextStyle(
+                                                          color: Colors.grey,
+                                                          fontSize: 14,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+
+                                                  if (_expandedUserData!
+                                                          .containsKey(
+                                                            'address',
+                                                          ) &&
+                                                      _expandedUserData!['address'] !=
+                                                          null)
+                                                    Padding(
+                                                      padding:
+                                                          const EdgeInsets.only(
+                                                            top: 8.0,
+                                                          ),
+                                                      child: Row(
+                                                        children: [
+                                                          const Icon(
+                                                            Icons.home,
+                                                            size: 14,
+                                                            color: Colors.grey,
+                                                          ),
+                                                          const SizedBox(
+                                                            width: 4,
+                                                          ),
+                                                          Expanded(
+                                                            child: Text(
+                                                              '${_expandedUserData!['address']}',
+                                                              style:
+                                                                  const TextStyle(
+                                                                    color:
+                                                                        Colors
+                                                                            .grey,
+                                                                    fontSize:
+                                                                        14,
+                                                                  ),
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+
+                                                  const SizedBox(height: 12),
+                                                  Row(
+                                                    mainAxisAlignment:
+                                                        MainAxisAlignment.end,
+                                                    children: [
+                                                      OutlinedButton.icon(
+                                                        icon: const Icon(
+                                                          Icons.mail,
+                                                          size: 16,
+                                                        ),
+                                                        label: const Text(
+                                                          'Contact',
+                                                        ),
+                                                        style: OutlinedButton.styleFrom(
+                                                          foregroundColor:
+                                                              Colors.brown,
+                                                          side: BorderSide(
+                                                            color: Colors.brown,
+                                                          ),
+                                                          padding:
+                                                              EdgeInsets.symmetric(
+                                                                horizontal: 12,
+                                                                vertical: 8,
+                                                              ),
+                                                        ),
+                                                        onPressed: () {
+                                                          // Future implementation for contacting user
+                                                          ScaffoldMessenger.of(
+                                                            context,
+                                                          ).showSnackBar(
+                                                            SnackBar(
+                                                              content: Text(
+                                                                'Contact feature will be implemented soon',
+                                                              ),
+                                                            ),
+                                                          );
+                                                        },
+                                                      ),
+                                                    ],
+                                                  ),
+                                                  // Add more user details here as needed
+                                                ],
+                                              ),
+                                            )
+                                            : const SizedBox.shrink(),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        );
                       },
                     ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildUserCard(Map<String, dynamic> user) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: Colors.brown.shade100,
-                  child: Text(
-                    (user['name'] ?? 'U').substring(0, 1).toUpperCase(),
-                    style: const TextStyle(
-                      color: Color(0xFF8B4513),
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        user['name'] ?? 'Unknown User',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        user['email'] ?? 'No email',
-                        style: const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.phone, size: 14, color: Colors.grey),
-                    const SizedBox(width: 4),
-                    Text(
-                      user['phone'] ?? 'No phone',
-                      style: const TextStyle(color: Colors.grey, fontSize: 14),
-                    ),
-                  ],
-                ),
-                const Spacer(),
-                Row(
-                  children: [
-                    const Icon(Icons.access_time, size: 14, color: Colors.grey),
-                    const SizedBox(width: 4),
-                    Text(
-                      user['registrationDate'] != null
-                          ? 'Registered ${DateFormat('MMM d, y').format(user['registrationDate'])}'
-                          : 'Registered',
-                      style: const TextStyle(color: Colors.grey, fontSize: 14),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ],
-        ),
       ),
     );
   }

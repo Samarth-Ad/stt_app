@@ -258,7 +258,7 @@ class HomeContent extends StatelessWidget {
       child: Container(
         width: 100,
         height: 90,
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: const Color(0xFF8B4513),
           borderRadius: BorderRadius.circular(12),
@@ -268,7 +268,7 @@ class HomeContent extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, color: Colors.white, size: 24),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Flexible(
               child: Text(
                 label,
@@ -277,7 +277,7 @@ class HomeContent extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.bold,
                 ),
               ),

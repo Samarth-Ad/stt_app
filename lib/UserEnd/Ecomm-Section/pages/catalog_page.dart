@@ -128,8 +128,8 @@ class _CatalogPageState extends State<CatalogPage>
       padding: const EdgeInsets.all(16),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        childAspectRatio: 0.8,
-        crossAxisSpacing: 16,
+        childAspectRatio: 0.7,
+        crossAxisSpacing: 12,
         mainAxisSpacing: 16,
       ),
       itemCount: products.length,

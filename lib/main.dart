@@ -18,6 +18,7 @@ import 'package:stt_app/UserEnd/Pages/donations/donations_page.dart';
 import 'package:stt_app/UserEnd/Pages/donations/donations_form_page.dart';
 import 'package:stt_app/firebase_options.dart';
 import 'package:stt_app/services/auth_service.dart';
+import 'package:stt_app/services/safe_registration_handler.dart';
 
 // Admin email constant - make it globally accessible
 const String ADMIN_EMAIL = "admin@gmail.com";
@@ -39,6 +40,10 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     print("Firebase initialized successfully");
+
+    // SafeRegistrationHandler will be initialized on first use
+    // No explicit initialization needed as it's a simple singleton
+    print("SafeRegistrationHandler ready for use");
 
     // Then initialize SharedPreferences
     final prefs = await SharedPreferences.getInstance();
@@ -100,6 +105,17 @@ class _MyAppState extends State<MyApp> {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF8B4513)),
         useMaterial3: true,
       ),
+      builder: (context, child) {
+        // Prevent overflow due to large text scaling
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaleFactor: MediaQuery.of(
+              context,
+            ).textScaleFactor.clamp(0.8, 1.1),
+          ),
+          child: child!,
+        );
+      },
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {

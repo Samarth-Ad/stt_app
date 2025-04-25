@@ -4,6 +4,7 @@ import 'package:stt_app/models/event_model.dart' as model;
 import 'package:stt_app/services/event_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:stt_app/services/safe_registration_handler.dart';
 import 'package:stt_app/UserEnd/Pages/events/upcoming_event_details.dart'
     as details;
 
@@ -18,20 +19,46 @@ class _EventsPageState extends State<EventsPage> {
   final EventService eventService = EventService();
   bool _isRefreshing = false;
   bool _isRegistering = false;
+  final SafeRegistrationHandler _handler = SafeRegistrationHandler();
 
   // Helper function to convert from model.Event to details.Event
   details.Event _convertToDetailsEvent(model.Event event) {
-    return details.Event(
-      id: event.id ?? '',
-      title: event.title,
-      description: '', // This field is missing in the model.Event
-      location: event.location,
-      date: event.date,
-      imageUrl: event.imageUrl,
-      capacity: 50, // Default capacity
-      registeredUsers: event.registeredUsers,
-      category: 'Event', // Default category
-    );
+    try {
+      // Safe image path handling
+      String imagePath = 'assets/stt_logo.png'; // Default fallback
+      if (event.imageUrl.isNotEmpty) {
+        if (event.imageUrl.startsWith('assets/')) {
+          imagePath = event.imageUrl;
+        }
+      }
+
+      return details.Event(
+        id: event.id ?? '',
+        title: event.title,
+        description:
+            'No description available', // Provide a default description
+        location: event.location,
+        date: event.date,
+        imageUrl: imagePath,
+        capacity: 50, // Default capacity
+        registeredUsers: event.registeredUsers,
+        category: 'Event', // Default category
+      );
+    } catch (e) {
+      print('Error converting event: $e');
+      // Return a fallback event if conversion fails
+      return details.Event(
+        id: event.id ?? '',
+        title: event.title,
+        description: 'Error loading event details',
+        location: event.location,
+        date: DateTime.now(),
+        imageUrl: 'assets/stt_logo.png',
+        capacity: 50,
+        registeredUsers: [],
+        category: 'Event',
+      );
+    }
   }
 
   Future<void> _refreshEvents() async {
@@ -116,35 +143,30 @@ class _EventsPageState extends State<EventsPage> {
         return;
       }
 
-      // Update the event document to add the user
-      await FirebaseFirestore.instance
-          .collection('events')
-          .doc(event.id)
-          .update({
-            'registeredUsers': FieldValue.arrayUnion([user.uid]),
-          });
-
-      // Add to user's registrations collection
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('registrations')
-          .doc(event.id)
-          .set({
-            'eventId': event.id,
-            'registrationDate': FieldValue.serverTimestamp(),
-            'status': 'registered',
-          });
-
-      // Refresh the event data to reflect the registration
-      await eventService.refreshEvents();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Successfully registered for the event!'),
-          backgroundColor: Colors.green,
-        ),
+      // Use the safe handler to register
+      final success = await _handler.registerUserForEvent(
+        user.uid,
+        event.id ?? '',
       );
+
+      if (success) {
+        // Refresh the event data to reflect the registration
+        await eventService.refreshEvents();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Successfully registered for the event!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Registration failed. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -246,7 +268,7 @@ class _EventsPageState extends State<EventsPage> {
                   return Column(
                     children:
                         snapshot.data!
-                            .map((event) => buildEventCard(event, true))
+                            .map((event) => _buildEventCard(event, true))
                             .toList(),
                   );
                 },
@@ -296,7 +318,7 @@ class _EventsPageState extends State<EventsPage> {
                   return Column(
                     children:
                         snapshot.data!
-                            .map((event) => buildEventCard(event, false))
+                            .map((event) => _buildEventCard(event, false))
                             .toList(),
                   );
                 },
@@ -308,7 +330,7 @@ class _EventsPageState extends State<EventsPage> {
     );
   }
 
-  Widget buildEventCard(model.Event event, bool isToday) {
+  Widget _buildEventCard(model.Event event, bool isToday) {
     // Check if current user is already registered
     bool isUserRegistered = false;
     final User? currentUser = FirebaseAuth.instance.currentUser;
@@ -339,16 +361,36 @@ class _EventsPageState extends State<EventsPage> {
             borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
             child: Image.asset(
               event.imageUrl,
-              height: 180,
+              height: 160,
               width: double.infinity,
               fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) {
-                // Fallback image if the asset can't be loaded
-                return Image.asset(
-                  'assets/stt_logo.png',
-                  height: 180,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
+                return Container(
+                  height: 160,
+                  color: Colors.brown.shade100,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.image_not_supported,
+                          size: 40,
+                          color: Colors.brown.shade400,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          event.title,
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.brown.shade700,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 );
               },
             ),

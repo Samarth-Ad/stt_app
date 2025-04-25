@@ -251,6 +251,41 @@ class _UserProfilePageState extends State<UserProfilePage> {
     }
   }
 
+  Widget _buildInfoCard(String title, String value) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value.isEmpty ? 'Not provided' : value,
+            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Check if we're inside a bottom navigation bar or a standalone page
@@ -416,80 +451,31 @@ class _UserProfilePageState extends State<UserProfilePage> {
                     // User info
                     Padding(
                       padding: const EdgeInsets.only(top: 16.0),
-                      child: Text(
-                        name.isNotEmpty ? name : 'User',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF8B4513),
-                        ),
-                      ),
+                      child: _buildInfoCard('Name', name),
                     ),
                     Padding(
-                      padding: const EdgeInsets.only(top: 4.0, bottom: 4.0),
-                      child: Text(
-                        email,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF8B4513),
-                        ),
-                      ),
+                      padding: const EdgeInsets.only(top: 16.0),
+                      child: _buildInfoCard('Email', email),
                     ),
                     if (phone.isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.only(bottom: 4.0),
-                        child: Text(
-                          phone,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF8B4513),
-                          ),
-                        ),
+                        padding: const EdgeInsets.only(top: 16.0),
+                        child: _buildInfoCard('Phone', phone),
                       ),
                     if (gender.isNotEmpty && gender != 'Select Gender')
                       Padding(
-                        padding: const EdgeInsets.only(bottom: 4.0),
-                        child: Text(
-                          gender,
-                          style: const TextStyle(
-                            fontSize: 14,
-                            color: Color(0xFF8B4513),
-                          ),
-                        ),
+                        padding: const EdgeInsets.only(top: 16.0),
+                        child: _buildInfoCard('Gender', gender),
                       ),
                     if (membership.isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.only(bottom: 16.0),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF8B4513).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            membership,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: Color(0xFF8B4513),
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
+                        padding: const EdgeInsets.only(top: 16.0),
+                        child: _buildInfoCard('Membership', membership),
                       ),
                     if (registrationDate.isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.only(bottom: 16.0),
-                        child: Text(
-                          'Member since: $registrationDate',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
+                        padding: const EdgeInsets.only(top: 16.0),
+                        child: _buildInfoCard('Member since', registrationDate),
                       ),
 
                     // Profile options

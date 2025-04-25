@@ -15,14 +15,12 @@ class _MyRegistrationsPageState extends State<MyRegistrationsPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   bool _isLoading = false;
-  List<Event> _upcomingEvents = [];
-  List<Event> _pastEvents = [];
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _fetchRegisteredEvents();
   }
 
   @override
@@ -31,26 +29,25 @@ class _MyRegistrationsPageState extends State<MyRegistrationsPage>
     super.dispose();
   }
 
-  Future<void> _fetchRegisteredEvents() async {
+  // New method to get registration IDs directly
+  Future<List<String>> _getRegisteredEventIds() async {
     setState(() {
       _isLoading = true;
     });
 
     try {
-      User? user = FirebaseAuth.instance.currentUser;
-
+      final User? user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Please log in to view your registrations'),
           ),
         );
-        return;
+        return [];
       }
 
-      // Get all events the user has registered for
       final userRegistrationsSnapshot =
-          await FirebaseFirestore.instance
+          await _firestore
               .collection('users')
               .doc(user.uid)
               .collection('registrations')
@@ -61,58 +58,28 @@ class _MyRegistrationsPageState extends State<MyRegistrationsPage>
               .map((doc) => doc['eventId'] as String)
               .toList();
 
-      if (eventIds.isEmpty) {
-        setState(() {
-          _upcomingEvents = [];
-          _pastEvents = [];
-          _isLoading = false;
-        });
-        return;
-      }
-
-      // Fetch the actual event data
-      List<Event> allEvents = [];
-
-      // Due to Firestore limitations, we need to fetch events in batches if there are many
-      for (int i = 0; i < eventIds.length; i += 10) {
-        final int end = (i + 10 < eventIds.length) ? i + 10 : eventIds.length;
-        final List<String> batch = eventIds.sublist(i, end);
-
-        final eventsSnapshot =
-            await FirebaseFirestore.instance
-                .collection('events')
-                .where(FieldPath.documentId, whereIn: batch)
-                .get();
-
-        final batchEvents =
-            eventsSnapshot.docs.map((doc) {
-              return Event.fromMap(doc.data(), doc.id);
-            }).toList();
-
-        allEvents.addAll(batchEvents);
-      }
-
-      // Split into upcoming and past events
-      final now = DateTime.now();
-      setState(() {
-        _upcomingEvents =
-            allEvents.where((event) => event.date.isAfter(now)).toList()
-              ..sort((a, b) => a.date.compareTo(b.date));
-
-        _pastEvents =
-            allEvents.where((event) => event.date.isBefore(now)).toList()
-              ..sort((a, b) => b.date.compareTo(a.date)); // Newest first
-
-        _isLoading = false;
-      });
+      return eventIds;
     } catch (e) {
-      print('Error fetching registered events: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading your registrations: $e')),
-      );
+      print('Error fetching registration IDs: $e');
+      return [];
+    } finally {
       setState(() {
         _isLoading = false;
       });
+    }
+  }
+
+  // Method to get event data safely
+  Future<Event?> _getEventData(String eventId) async {
+    try {
+      final doc = await _firestore.collection('events').doc(eventId).get();
+      if (doc.exists) {
+        return Event.fromMap(doc.data()!, doc.id);
+      }
+      return null;
+    } catch (e) {
+      print('Error fetching event $eventId: $e');
+      return null;
     }
   }
 
@@ -140,66 +107,216 @@ class _MyRegistrationsPageState extends State<MyRegistrationsPage>
               ? const Center(
                 child: CircularProgressIndicator(color: Color(0xFF8B4513)),
               )
-              : TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildEventsList(_upcomingEvents, true),
-                  _buildEventsList(_pastEvents, false),
-                ],
+              : FutureBuilder<List<String>>(
+                future: _getRegisteredEventIds(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF8B4513),
+                      ),
+                    );
+                  }
+
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: Text(
+                        'Error loading registrations: ${snapshot.error}',
+                      ),
+                    );
+                  }
+
+                  final eventIds = snapshot.data ?? [];
+
+                  if (eventIds.isEmpty) {
+                    return TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _buildEmptyState(true),
+                        _buildEmptyState(false),
+                      ],
+                    );
+                  }
+
+                  return TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildEventsList(eventIds, true),
+                      _buildEventsList(eventIds, false),
+                    ],
+                  );
+                },
               ),
     );
   }
 
-  Widget _buildEventsList(List<Event> events, bool isUpcoming) {
-    if (events.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              isUpcoming ? Icons.event_available : Icons.history,
-              size: 64,
-              color: Colors.grey.shade400,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              isUpcoming
-                  ? 'No upcoming events registered'
-                  : 'No past event registrations',
-              style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 24),
-            if (isUpcoming)
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.pushNamed(context, '/upcoming-events');
-                },
-                icon: const Icon(Icons.search),
-                label: const Text('Find Events'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF8B4513),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
-                  ),
+  Widget _buildEmptyState(bool isUpcoming) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            isUpcoming ? Icons.event_available : Icons.history,
+            size: 64,
+            color: Colors.grey.shade400,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            isUpcoming
+                ? 'No upcoming events registered'
+                : 'No past event registrations',
+            style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 24),
+          if (isUpcoming)
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pushNamed(context, '/upcoming-events');
+              },
+              icon: const Icon(Icons.search),
+              label: const Text('Find Events'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF8B4513),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 12,
                 ),
               ),
-          ],
-        ),
-      );
-    }
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEventsList(List<String> eventIds, bool isUpcoming) {
+    final now = DateTime.now();
 
     return RefreshIndicator(
-      onRefresh: _fetchRegisteredEvents,
+      onRefresh: () async {
+        setState(() {});
+      },
       color: const Color(0xFF8B4513),
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
-        itemCount: events.length,
+        itemCount: eventIds.length,
         itemBuilder: (context, index) {
-          final event = events[index];
-          return _buildEventCard(event, isUpcoming);
+          final eventId = eventIds[index];
+
+          return FutureBuilder<Event?>(
+            future: _getEventData(eventId),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return _buildLoadingEventCard();
+              }
+
+              if (snapshot.hasError || snapshot.data == null) {
+                return _buildErrorEventCard(eventId);
+              }
+
+              final event = snapshot.data!;
+
+              // Check if event should be shown in this tab
+              final isEventUpcoming = event.date.isAfter(now);
+              if (isUpcoming != isEventUpcoming) {
+                return const SizedBox.shrink();
+              }
+
+              return _buildEventCard(event, isUpcoming);
+            },
+          );
         },
+      ),
+    );
+  }
+
+  Widget _buildLoadingEventCard() {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Container(
+        height: 120,
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              width: 100,
+              decoration: BoxDecoration(
+                color: Colors.grey.shade300,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(12),
+                  bottomLeft: Radius.circular(12),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    height: 16,
+                    width: 120,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    height: 12,
+                    width: 180,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    height: 12,
+                    width: 150,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorEventCard(String eventId) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 16),
+      elevation: 2,
+      color: Colors.red.shade50,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Icon(Icons.error_outline, color: Colors.red.shade400, size: 24),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                'Error loading event information',
+                style: TextStyle(color: Colors.red.shade800),
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () {
+                // Could add functionality to remove this registration
+              },
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -218,7 +335,7 @@ class _MyRegistrationsPageState extends State<MyRegistrationsPage>
             ),
           ).then((value) {
             if (value == true) {
-              _fetchRegisteredEvents();
+              setState(() {});
             }
           });
         },
@@ -236,6 +353,17 @@ class _MyRegistrationsPageState extends State<MyRegistrationsPage>
                 height: 120,
                 width: 100,
                 fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    height: 120,
+                    width: 100,
+                    color: Colors.grey.shade300,
+                    child: Icon(
+                      Icons.image_not_supported,
+                      color: Colors.grey.shade500,
+                    ),
+                  );
+                },
               ),
             ),
 
@@ -296,7 +424,7 @@ class _MyRegistrationsPageState extends State<MyRegistrationsPage>
 
                     // Date and time
                     Text(
-                      DateFormat('E, MMM d, yyyy • h:mm a').format(event.date),
+                      DateFormat('E, MMM d, yyyy').format(event.date),
                       style: TextStyle(
                         fontSize: 13,
                         color: Colors.grey.shade600,

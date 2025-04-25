@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:stt_app/services/safe_registration_handler.dart';
 
 class Event {
   final String id;
@@ -27,14 +28,30 @@ class Event {
   });
 
   factory Event.fromMap(Map<String, dynamic> map, String documentId) {
+    // Helper function to determine image path safely
+    String getImagePath(dynamic imageValue) {
+      if (imageValue is String && imageValue.isNotEmpty) {
+        if (imageValue.startsWith('assets/')) {
+          return imageValue; // Already an asset path
+        } else if (imageValue.startsWith('http')) {
+          // For network images (to be supported in future)
+          return 'assets/stt_logo.png'; // Fallback to local asset for now
+        }
+      }
+      return 'assets/stt_logo.png'; // Default fallback
+    }
+
     return Event(
       id: documentId,
       title: map['title'] ?? '',
       description: map['description'] ?? '',
       location: map['location'] ?? '',
-      date: (map['date'] as Timestamp).toDate(),
-      imageUrl: map['imageUrl'] ?? 'assets/stt_logo.png',
-      capacity: map['capacity'] ?? 50,
+      date:
+          (map['date'] is Timestamp)
+              ? (map['date'] as Timestamp).toDate()
+              : DateTime.now(),
+      imageUrl: getImagePath(map['imageUrl']),
+      capacity: map['capacity'] is int ? map['capacity'] : 50,
       registeredUsers: List<String>.from(map['registeredUsers'] ?? []),
       category: map['category'] ?? 'Cleaning Drive',
     );
@@ -54,6 +71,7 @@ class UpcomingEventDetailsPage extends StatefulWidget {
 class _UpcomingEventDetailsPageState extends State<UpcomingEventDetailsPage> {
   bool _isRegistered = false;
   bool _isLoading = false;
+  final SafeRegistrationHandler _handler = SafeRegistrationHandler();
 
   @override
   void initState() {
@@ -120,33 +138,28 @@ class _UpcomingEventDetailsPageState extends State<UpcomingEventDetailsPage> {
         return;
       }
 
-      // Register the user
-      await FirebaseFirestore.instance
-          .collection('events')
-          .doc(widget.event.id)
-          .update({
-            'registeredUsers': FieldValue.arrayUnion([user.uid]),
-          });
-
-      // Also add to user's registrations collection
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .collection('registrations')
-          .doc(widget.event.id)
-          .set({
-            'eventId': widget.event.id,
-            'registrationDate': FieldValue.serverTimestamp(),
-            'status': 'registered',
-          });
-
-      setState(() {
-        _isRegistered = true;
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Successfully registered for the event!')),
+      // Use the safe handler to register
+      final success = await _handler.registerUserForEvent(
+        user.uid,
+        widget.event.id,
       );
+
+      if (success) {
+        setState(() {
+          _isRegistered = true;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Successfully registered for the event!'),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Registration failed. Please try again.'),
+          ),
+        );
+      }
     } catch (e) {
       ScaffoldMessenger.of(
         context,
@@ -183,11 +196,22 @@ class _UpcomingEventDetailsPageState extends State<UpcomingEventDetailsPage> {
                     Container(
                       height: 200,
                       width: double.infinity,
-                      decoration: BoxDecoration(
-                        image: DecorationImage(
-                          image: AssetImage(widget.event.imageUrl),
-                          fit: BoxFit.cover,
-                        ),
+                      child: Image.asset(
+                        widget.event.imageUrl,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          // Fallback for missing images
+                          return Container(
+                            color: Colors.brown.shade100,
+                            child: Center(
+                              child: Icon(
+                                Icons.image_not_supported,
+                                size: 64,
+                                color: Colors.brown.shade400,
+                              ),
+                            ),
+                          );
+                        },
                       ),
                     ),
 

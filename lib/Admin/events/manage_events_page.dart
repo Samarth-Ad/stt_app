@@ -5,6 +5,7 @@ import 'package:stt_app/models/event_model.dart';
 import 'package:stt_app/services/event_service.dart';
 import 'package:stt_app/Admin/events/add_event_page.dart';
 import 'package:stt_app/Admin/events/edit_event_page.dart';
+import 'package:stt_app/Admin/events/event_registrations_page.dart';
 
 class ManageEventsPage extends StatefulWidget {
   const ManageEventsPage({super.key});
@@ -381,10 +382,43 @@ class _ManageEventsPageState extends State<ManageEventsPage> {
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.people, size: 16, color: Colors.grey),
+                const SizedBox(width: 6),
+                Text(
+                  '${event.registeredUsers.length} registrations',
+                  style: const TextStyle(
+                    color: Colors.grey,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
+                // Registrations button
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.people, size: 18),
+                  label: const Text('Registrations'),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder:
+                            (context) => EventRegistrationsPage(event: event),
+                      ),
+                    );
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.brown,
+                    side: const BorderSide(color: Colors.brown),
+                  ),
+                ),
+                const SizedBox(width: 8),
                 // Edit button
                 TextButton.icon(
                   icon: const Icon(Icons.edit, size: 18),

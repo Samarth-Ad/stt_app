@@ -9,6 +9,7 @@ class Event {
   final String imageUrl;
   final bool isActive;
   final DateTime createdAt;
+  final List<String> registeredUsers;
 
   Event({
     this.id,
@@ -19,7 +20,9 @@ class Event {
     required this.imageUrl,
     this.isActive = true,
     DateTime? createdAt,
-  }) : createdAt = createdAt ?? DateTime.now();
+    List<String>? registeredUsers,
+  }) : createdAt = createdAt ?? DateTime.now(),
+       registeredUsers = registeredUsers ?? [];
 
   // Convert to a map for Firestore
   Map<String, dynamic> toMap() {
@@ -32,6 +35,7 @@ class Event {
       'imageUrl': imageUrl,
       'isActive': isActive,
       'createdAt': createdAt.millisecondsSinceEpoch,
+      'registeredUsers': registeredUsers,
     };
   }
 
@@ -59,6 +63,14 @@ class Event {
       }
     }
 
+    // Extract registeredUsers list from map
+    List<String> parseRegisteredUsers(dynamic registeredUsersValue) {
+      if (registeredUsersValue is List) {
+        return registeredUsersValue.map((item) => item.toString()).toList();
+      }
+      return [];
+    }
+
     return Event(
       id: map['id'],
       title: map['title'] ?? '',
@@ -71,6 +83,7 @@ class Event {
           map.containsKey('createdAt')
               ? parseCreatedAt(map['createdAt'])
               : DateTime.now(),
+      registeredUsers: parseRegisteredUsers(map['registeredUsers']),
     );
   }
 
@@ -84,6 +97,7 @@ class Event {
     String? imageUrl,
     bool? isActive,
     DateTime? createdAt,
+    List<String>? registeredUsers,
   }) {
     return Event(
       id: id ?? this.id,
@@ -94,6 +108,7 @@ class Event {
       imageUrl: imageUrl ?? this.imageUrl,
       isActive: isActive ?? this.isActive,
       createdAt: createdAt ?? this.createdAt,
+      registeredUsers: registeredUsers ?? this.registeredUsers,
     );
   }
 }

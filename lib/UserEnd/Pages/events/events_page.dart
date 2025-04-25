@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:stt_app/models/event_model.dart';
+import 'package:stt_app/models/event_model.dart' as model;
 import 'package:stt_app/services/event_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:stt_app/UserEnd/Pages/events/upcoming_event_details.dart'
+    as details;
 
 class EventsPage extends StatefulWidget {
   const EventsPage({super.key});
@@ -13,6 +17,22 @@ class EventsPage extends StatefulWidget {
 class _EventsPageState extends State<EventsPage> {
   final EventService eventService = EventService();
   bool _isRefreshing = false;
+  bool _isRegistering = false;
+
+  // Helper function to convert from model.Event to details.Event
+  details.Event _convertToDetailsEvent(model.Event event) {
+    return details.Event(
+      id: event.id ?? '',
+      title: event.title,
+      description: '', // This field is missing in the model.Event
+      location: event.location,
+      date: event.date,
+      imageUrl: event.imageUrl,
+      capacity: 50, // Default capacity
+      registeredUsers: event.registeredUsers,
+      category: 'Event', // Default category
+    );
+  }
 
   Future<void> _refreshEvents() async {
     if (_isRefreshing) return;
@@ -46,6 +66,96 @@ class _EventsPageState extends State<EventsPage> {
       if (mounted) {
         setState(() {
           _isRefreshing = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _registerForEvent(model.Event event) async {
+    // Prevent multiple registration attempts
+    if (_isRegistering) return;
+
+    setState(() {
+      _isRegistering = true;
+    });
+
+    try {
+      // Check if user is logged in
+      final User? user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please login to register for events'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Check if already registered
+      if (event.registeredUsers.contains(user.uid)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You are already registered for this event'),
+            backgroundColor: Colors.amber,
+          ),
+        );
+        return;
+      }
+
+      // Check if event is at capacity (assuming a default capacity of 50 if not specified)
+      final int capacity =
+          50; // This could be part of your event model in the future
+      if (event.registeredUsers.length >= capacity) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('This event is at full capacity'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // Update the event document to add the user
+      await FirebaseFirestore.instance
+          .collection('events')
+          .doc(event.id)
+          .update({
+            'registeredUsers': FieldValue.arrayUnion([user.uid]),
+          });
+
+      // Add to user's registrations collection
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .collection('registrations')
+          .doc(event.id)
+          .set({
+            'eventId': event.id,
+            'registrationDate': FieldValue.serverTimestamp(),
+            'status': 'registered',
+          });
+
+      // Refresh the event data to reflect the registration
+      await eventService.refreshEvents();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Successfully registered for the event!'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Registration failed: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRegistering = false;
         });
       }
     }
@@ -106,7 +216,7 @@ class _EventsPageState extends State<EventsPage> {
               const SizedBox(height: 16),
 
               // Stream of today's events
-              StreamBuilder<List<Event>>(
+              StreamBuilder<List<model.Event>>(
                 stream: eventService.getTodayEvents(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
@@ -136,18 +246,7 @@ class _EventsPageState extends State<EventsPage> {
                   return Column(
                     children:
                         snapshot.data!
-                            .map(
-                              (event) => _buildEventCard(
-                                imageUrl: event.imageUrl,
-                                title: event.title,
-                                date: DateFormat(
-                                  'MMMM dd, yyyy',
-                                ).format(event.date),
-                                location: event.location,
-                                time: event.time,
-                                isToday: true,
-                              ),
-                            )
+                            .map((event) => buildEventCard(event, true))
                             .toList(),
                   );
                 },
@@ -167,7 +266,7 @@ class _EventsPageState extends State<EventsPage> {
               const SizedBox(height: 16),
 
               // Stream of upcoming events
-              StreamBuilder<List<Event>>(
+              StreamBuilder<List<model.Event>>(
                 stream: eventService.getUpcomingEvents(),
                 builder: (context, snapshot) {
                   if (snapshot.connectionState == ConnectionState.waiting) {
@@ -197,18 +296,7 @@ class _EventsPageState extends State<EventsPage> {
                   return Column(
                     children:
                         snapshot.data!
-                            .map(
-                              (event) => _buildEventCard(
-                                imageUrl: event.imageUrl,
-                                title: event.title,
-                                date: DateFormat(
-                                  'MMMM dd, yyyy',
-                                ).format(event.date),
-                                location: event.location,
-                                time: event.time,
-                                isToday: false,
-                              ),
-                            )
+                            .map((event) => buildEventCard(event, false))
                             .toList(),
                   );
                 },
@@ -220,14 +308,14 @@ class _EventsPageState extends State<EventsPage> {
     );
   }
 
-  Widget _buildEventCard({
-    required String imageUrl,
-    required String title,
-    required String date,
-    required String location,
-    required String time,
-    required bool isToday,
-  }) {
+  Widget buildEventCard(model.Event event, bool isToday) {
+    // Check if current user is already registered
+    bool isUserRegistered = false;
+    final User? currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser != null) {
+      isUserRegistered = event.registeredUsers.contains(currentUser.uid);
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
@@ -250,7 +338,7 @@ class _EventsPageState extends State<EventsPage> {
           ClipRRect(
             borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
             child: Image.asset(
-              imageUrl,
+              event.imageUrl,
               height: 180,
               width: double.infinity,
               fit: BoxFit.cover,
@@ -276,7 +364,7 @@ class _EventsPageState extends State<EventsPage> {
                   children: [
                     Expanded(
                       child: Text(
-                        title,
+                        event.title,
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
@@ -315,7 +403,10 @@ class _EventsPageState extends State<EventsPage> {
                       color: Colors.grey,
                     ),
                     const SizedBox(width: 6),
-                    Text(date, style: const TextStyle(color: Colors.grey)),
+                    Text(
+                      DateFormat('MMMM dd, yyyy').format(event.date),
+                      style: const TextStyle(color: Colors.grey),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -324,7 +415,10 @@ class _EventsPageState extends State<EventsPage> {
                   children: [
                     const Icon(Icons.access_time, size: 16, color: Colors.grey),
                     const SizedBox(width: 6),
-                    Text(time, style: const TextStyle(color: Colors.grey)),
+                    Text(
+                      event.time,
+                      style: const TextStyle(color: Colors.grey),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -335,32 +429,98 @@ class _EventsPageState extends State<EventsPage> {
                     const SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        location,
+                        event.location,
                         style: const TextStyle(color: Colors.grey),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                // Register button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    icon: const Icon(Icons.how_to_reg),
-                    label: const Text('Register'),
-                    onPressed: () {
-                      // Handle registration
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF8B4513),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+
+                // Registration status
+                if (isUserRegistered)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Row(
+                      children: [
+                        Icon(Icons.check_circle, size: 16, color: Colors.green),
+                        const SizedBox(width: 6),
+                        Text(
+                          'You are registered',
+                          style: TextStyle(
+                            color: Colors.green,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+
+                const SizedBox(height: 12),
+
+                // View details or Register button
+                Row(
+                  children: [
+                    // View Details Button
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.info_outline),
+                        label: const Text('View Details'),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder:
+                                  (context) => details.UpcomingEventDetailsPage(
+                                    event: _convertToDetailsEvent(event),
+                                  ),
+                            ),
+                          ).then((_) {
+                            // Refresh data when returning from details page
+                            _refreshEvents();
+                          });
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF8B4513),
+                          side: const BorderSide(color: Color(0xFF8B4513)),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // Register Button
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        icon:
+                            _isRegistering
+                                ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                                : const Icon(Icons.how_to_reg),
+                        label: Text(
+                          isUserRegistered ? 'Registered' : 'Register',
+                        ),
+                        onPressed:
+                            isUserRegistered || _isRegistering
+                                ? null
+                                : () => _registerForEvent(event),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF8B4513),
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: Colors.grey.shade400,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

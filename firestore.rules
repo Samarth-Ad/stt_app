@@ -27,14 +27,37 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
       allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
       allow delete: if isAuthenticated() && isAdmin();
+      
+      // Allow access to user's registrations subcollection
+      match /registrations/{registrationId} {
+        allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+        allow create, update: if isAuthenticated() && isOwner(userId);
+        allow delete: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      }
     }
     
     // Events collection rules
     match /events/{eventId} {
       // Anyone can read events
-      // Only admin can create/update/delete events
+      // Only admin can create/delete events
+      // Users can update events only for registrations
       allow read: if true;
-      allow create, update, delete: if isAuthenticated() && isAdmin();
+      allow create, delete: if isAuthenticated() && isAdmin();
+      
+      // Allow admins to update any field
+      // Allow regular users to only update the registeredUsers array by adding their own ID
+      allow update: if isAuthenticated() && (
+        isAdmin() || 
+        (
+          // Only the registeredUsers field is being updated
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['registeredUsers']) &&
+          
+          // The update is an array union operation adding only the user's own ID
+          request.resource.data.registeredUsers.hasAll(resource.data.registeredUsers) &&
+          request.resource.data.registeredUsers.size() == resource.data.registeredUsers.size() + 1 &&
+          request.resource.data.registeredUsers.hasAll([request.auth.uid])
+        )
+      );
     }
     
     // Donations collection rules

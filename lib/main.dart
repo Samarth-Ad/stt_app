@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:stt_app/Admin/admin_test.dart';
 import 'package:stt_app/Authentication/loginPage.dart';
 import 'package:stt_app/Authentication/signUp_page.dart';
 import 'package:stt_app/UserEnd/Pages/contact_us/contact_usPage.dart';
@@ -17,6 +18,14 @@ import 'package:stt_app/UserEnd/Pages/donations/donations_page.dart';
 import 'package:stt_app/UserEnd/Pages/donations/donations_form_page.dart';
 import 'package:stt_app/firebase_options.dart';
 import 'package:stt_app/services/auth_service.dart';
+
+// Admin email constant - make it globally accessible
+const String ADMIN_EMAIL = "admin@gmail.com";
+
+// Function to check if a user is an admin
+bool isUserAdmin(User? user) {
+  return user != null && user.email == ADMIN_EMAIL;
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -52,6 +61,10 @@ void main() async {
       if (email != null && email.isNotEmpty) {
         await prefs.setString('user_email', email);
         print("Saved email to SharedPreferences: $email");
+
+        // Store admin status in SharedPreferences for quick access
+        await prefs.setBool('is_admin', email == ADMIN_EMAIL);
+        print("Admin status saved: ${email == ADMIN_EMAIL}");
       }
 
       // Mark as fully cached to prevent unnecessary Firestore fetches
@@ -97,7 +110,18 @@ class _MyAppState extends State<MyApp> {
           }
 
           if (snapshot.hasData) {
-            // Set home tab as default
+            // Check if the current user is an admin
+            final User user = snapshot.data!;
+            print("Auth state changed: User logged in: ${user.email}");
+            print("Checking if admin: ${user.email == ADMIN_EMAIL}");
+
+            if (isUserAdmin(user)) {
+              // If admin, redirect to admin page
+              print("Redirecting to admin page");
+              return const AdminPage();
+            }
+
+            // Otherwise, set home tab as default for regular users
             currentHomeTab = 2;
             return const HomePage();
           } else {
@@ -119,6 +143,16 @@ class _MyAppState extends State<MyApp> {
         '/events-history': (context) => const EventsHistoryPage(),
         '/donations': (context) => const DonationsPage(),
         '/donation-form': (context) => const DonationsFormPage(),
+        '/admin': (context) {
+          // Check if the current user is admin before navigating
+          final User? user = FirebaseAuth.instance.currentUser;
+          if (isUserAdmin(user)) {
+            return const AdminPage();
+          } else {
+            // Redirect non-admin users to home
+            return const HomePage(initialTab: 2);
+          }
+        },
       },
       // Handle profile navigation
       onGenerateRoute: (settings) {

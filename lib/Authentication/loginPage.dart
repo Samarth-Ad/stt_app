@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:stt_app/services/auth_service.dart';
+import 'package:stt_app/main.dart'; // Import to access isUserAdmin function
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -55,7 +56,7 @@ class _LoginPageState extends State<LoginPage> {
 
     try {
       // Authenticate with Firebase
-      await _authService.signInWithEmailAndPassword(
+      UserCredential result = await _authService.signInWithEmailAndPassword(
         _emailController.text.trim(),
         _passwordController.text,
       );
@@ -66,10 +67,18 @@ class _LoginPageState extends State<LoginPage> {
         await prefs.setString('savedEmail', _emailController.text);
       }
 
-      // Additional data will be loaded from Firebase in the user profile
-
+      // Check if the user is an admin and redirect accordingly
       if (mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
+        User? currentUser = result.user;
+        print("Login successful for: ${currentUser?.email}");
+
+        if (isUserAdmin(currentUser)) {
+          print("Redirecting to admin page after login");
+          Navigator.pushReplacementNamed(context, '/admin');
+        } else {
+          print("Redirecting to home page after login");
+          Navigator.pushReplacementNamed(context, '/home');
+        }
       }
     } on FirebaseAuthException catch (e) {
       setState(() {

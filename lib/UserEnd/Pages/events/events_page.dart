@@ -1,15 +1,58 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:stt_app/models/event_model.dart';
+import 'package:stt_app/services/event_service.dart';
 
-class EventsPage extends StatelessWidget {
+class EventsPage extends StatefulWidget {
   const EventsPage({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    // Get current date for highlighting today's events
-    final DateTime now = DateTime.now();
-    final String todayDate = DateFormat('yyyy-MM-dd').format(now);
+  State<EventsPage> createState() => _EventsPageState();
+}
 
+class _EventsPageState extends State<EventsPage> {
+  final EventService eventService = EventService();
+  bool _isRefreshing = false;
+
+  Future<void> _refreshEvents() async {
+    if (_isRefreshing) return;
+
+    setState(() {
+      _isRefreshing = true;
+    });
+
+    try {
+      await eventService.refreshEvents();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Events refreshed successfully'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error refreshing events: $e'),
+            backgroundColor: Colors.red,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRefreshing = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -23,6 +66,20 @@ class EventsPage extends StatelessWidget {
         elevation: 0,
         centerTitle: true,
         actions: [
+          IconButton(
+            icon:
+                _isRefreshing
+                    ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF8B4513),
+                        strokeWidth: 2,
+                      ),
+                    )
+                    : Icon(Icons.refresh, color: Color(0xFF8B4513)),
+            onPressed: _isRefreshing ? null : _refreshEvents,
+          ),
           IconButton(
             icon: const Icon(Icons.history, color: Color(0xFF8B4513)),
             onPressed: () {
@@ -47,13 +104,53 @@ class EventsPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              _buildEventCard(
-                imageUrl: 'assets/stt_logo.png',
-                title: 'Blood Donation Camp',
-                date: DateFormat('MMMM dd, yyyy').format(now),
-                location: 'City Hospital, Ahmedabad',
-                time: '10:00 AM - 4:00 PM',
-                isToday: true,
+
+              // Stream of today's events
+              StreamBuilder<List<Event>>(
+                stream: eventService.getTodayEvents(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF8B4513),
+                      ),
+                    );
+                  }
+
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Error: ${snapshot.error}'));
+                  }
+
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Center(
+                        child: Text(
+                          'No events scheduled for today',
+                          style: TextStyle(fontSize: 16, color: Colors.grey),
+                        ),
+                      ),
+                    );
+                  }
+
+                  return Column(
+                    children:
+                        snapshot.data!
+                            .map(
+                              (event) => _buildEventCard(
+                                imageUrl: event.imageUrl,
+                                title: event.title,
+                                date: DateFormat(
+                                  'MMMM dd, yyyy',
+                                ).format(event.date),
+                                location: event.location,
+                                time: event.time,
+                                isToday: true,
+                              ),
+                            )
+                            .toList(),
+                  );
+                },
               ),
 
               const SizedBox(height: 24),
@@ -68,29 +165,53 @@ class EventsPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              _buildEventCard(
-                imageUrl: 'assets/stt_logo.png',
-                title: 'Food Distribution Drive',
-                date: 'April 2, 2025',
-                location: 'Slum Areas, Ahmedabad',
-                time: '9:00 AM - 1:00 PM',
-                isToday: false,
-              ),
-              _buildEventCard(
-                imageUrl: 'assets/stt_logo.png',
-                title: 'Tree Plantation Drive',
-                date: 'April 10, 2025',
-                location: 'City Park, Ahmedabad',
-                time: '8:00 AM - 12:00 PM',
-                isToday: false,
-              ),
-              _buildEventCard(
-                imageUrl: 'assets/stt_logo.png',
-                title: 'Clothes Donation Drive',
-                date: 'April 15, 2025',
-                location: 'Orphanage, Ahmedabad',
-                time: '11:00 AM - 3:00 PM',
-                isToday: false,
+
+              // Stream of upcoming events
+              StreamBuilder<List<Event>>(
+                stream: eventService.getUpcomingEvents(),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF8B4513),
+                      ),
+                    );
+                  }
+
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Error: ${snapshot.error}'));
+                  }
+
+                  if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Center(
+                        child: Text(
+                          'No upcoming events scheduled',
+                          style: TextStyle(fontSize: 16, color: Colors.grey),
+                        ),
+                      ),
+                    );
+                  }
+
+                  return Column(
+                    children:
+                        snapshot.data!
+                            .map(
+                              (event) => _buildEventCard(
+                                imageUrl: event.imageUrl,
+                                title: event.title,
+                                date: DateFormat(
+                                  'MMMM dd, yyyy',
+                                ).format(event.date),
+                                location: event.location,
+                                time: event.time,
+                                isToday: false,
+                              ),
+                            )
+                            .toList(),
+                  );
+                },
               ),
             ],
           ),
@@ -133,6 +254,15 @@ class EventsPage extends StatelessWidget {
               height: 180,
               width: double.infinity,
               fit: BoxFit.cover,
+              errorBuilder: (context, error, stackTrace) {
+                // Fallback image if the asset can't be loaded
+                return Image.asset(
+                  'assets/stt_logo.png',
+                  height: 180,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                );
+              },
             ),
           ),
           Padding(
@@ -144,12 +274,14 @@ class EventsPage extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF8B4513),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF8B4513),
+                        ),
                       ),
                     ),
                     if (isToday)
@@ -201,7 +333,13 @@ class EventsPage extends StatelessWidget {
                   children: [
                     const Icon(Icons.location_on, size: 16, color: Colors.grey),
                     const SizedBox(width: 6),
-                    Text(location, style: const TextStyle(color: Colors.grey)),
+                    Expanded(
+                      child: Text(
+                        location,
+                        style: const TextStyle(color: Colors.grey),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 12),

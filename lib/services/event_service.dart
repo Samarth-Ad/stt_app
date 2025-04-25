@@ -35,13 +35,34 @@ class EventService {
   // Initialize cache from SharedPreferences
   Future<void> _initCache() async {
     if (!_cacheInitialized) {
-      await _loadEventsFromCache();
-      _cacheInitialized = true;
+      try {
+        await _loadEventsFromCache();
+        _cacheInitialized = true;
 
-      // Try to refresh cache from Firestore in background
-      _fetchAndCacheEvents().catchError((e) {
-        print('Error refreshing cache from Firestore: $e');
-      });
+        // If cache is empty, use placeholders
+        if (_cachedEvents.isEmpty) {
+          print('Cache is empty, using placeholder events');
+          _cachedEvents = _createPlaceholderEvents();
+          _notifyListeners();
+        }
+
+        // Try to refresh cache from Firestore in background with retry mechanism
+        _fetchAndCacheEvents().catchError((e) {
+          print('Error refreshing cache from Firestore: $e');
+          // Try again after a delay if it failed
+          Future.delayed(const Duration(seconds: 3), () {
+            _fetchAndCacheEvents().catchError((e) {
+              print('Second attempt to refresh cache failed: $e');
+            });
+          });
+        });
+      } catch (e) {
+        print('Error initializing cache: $e');
+        // Initialize with placeholder events to prevent further crashes
+        _cachedEvents = _createPlaceholderEvents();
+        _cacheInitialized = true;
+        _notifyListeners();
+      }
     }
   }
 
@@ -87,7 +108,29 @@ class EventService {
   // Fetch events from Firestore and update cache
   Future<void> _fetchAndCacheEvents() async {
     try {
+      // Check for connectivity first
+      final connectivityResult = await Connectivity().checkConnectivity();
+      if (connectivityResult.contains(ConnectivityResult.none)) {
+        print('No internet connection for fetching events');
+
+        // If cache is empty, use placeholders
+        if (_cachedEvents.isEmpty) {
+          _cachedEvents = _createPlaceholderEvents();
+          _notifyListeners();
+        }
+
+        return; // Exit early if no connection
+      }
+
+      print('Fetching events from Firestore...');
       final snapshot = await eventsCollection.get();
+      if (snapshot.docs.isEmpty) {
+        print('No events found in Firestore');
+        _cachedEvents = _createPlaceholderEvents();
+        _notifyListeners();
+        return;
+      }
+
       final List<Event> events =
           snapshot.docs.map((doc) {
             final data = doc.data() as Map<String, dynamic>;
@@ -104,6 +147,13 @@ class EventService {
       // Save to SharedPreferences
       await _saveEventsToCache();
 
+      // Update last fetch time
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        _lastFetchTimeKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+
       // Notify stream listeners
       _notifyListeners();
 
@@ -111,6 +161,12 @@ class EventService {
     } catch (e) {
       print('Error fetching events from Firestore: $e');
       // If fetch fails, we'll continue using the existing cache
+      // If cache is empty, add placeholder events so UI isn't stuck loading
+      if (_cachedEvents.isEmpty) {
+        _cachedEvents = _createPlaceholderEvents();
+        _notifyListeners();
+      }
+      rethrow; // Rethrow the error to let callers know it failed
     }
   }
 
@@ -302,7 +358,34 @@ class EventService {
 
   // Force refresh from Firestore (can be called when network is available)
   Future<void> refreshEvents() async {
-    return _fetchAndCacheEvents();
+    try {
+      // Check for connectivity first
+      final connectivityResult = await Connectivity().checkConnectivity();
+      if (connectivityResult.contains(ConnectivityResult.none)) {
+        print('No internet connection available for refresh');
+
+        // If cache is empty, use placeholders to prevent UI from being stuck
+        if (_cachedEvents.isEmpty) {
+          _cachedEvents = _createPlaceholderEvents();
+          _notifyListeners();
+        }
+
+        throw Exception('No internet connection available');
+      }
+
+      print('Manual refresh of events requested');
+      return await _fetchAndCacheEvents();
+    } catch (e) {
+      print('Error refreshing events: $e');
+
+      // Always make sure there's something in the stream to prevent UI from getting stuck
+      if (_cachedEvents.isEmpty) {
+        _cachedEvents = _createPlaceholderEvents();
+        _notifyListeners();
+      }
+
+      rethrow; // Let the UI handle the error
+    }
   }
 
   // Get historical events (past events)
@@ -430,5 +513,50 @@ class EventService {
       _lastFetchTimeKey,
       DateTime.now().millisecondsSinceEpoch,
     );
+  }
+
+  // Create placeholder events as a fallback
+  List<Event> _createPlaceholderEvents() {
+    final now = DateTime.now();
+    final List<Event> placeholders = [];
+
+    // Create 3 sample events
+    placeholders.add(
+      Event(
+        id: 'placeholder-1',
+        title: 'Sample Upcoming Event',
+        date: DateTime(now.year, now.month, now.day + 5),
+        time: '10:00 AM - 12:00 PM',
+        location: 'Main Temple Hall',
+        imageUrl: 'assets/stt_logo.png',
+        isActive: true,
+      ),
+    );
+
+    placeholders.add(
+      Event(
+        id: 'placeholder-2',
+        title: 'Temple Ceremony',
+        date: DateTime(now.year, now.month, now.day + 10),
+        time: '9:00 AM - 11:00 AM',
+        location: 'Temple Prayer Hall',
+        imageUrl: 'assets/stt_logo.png',
+        isActive: true,
+      ),
+    );
+
+    placeholders.add(
+      Event(
+        id: 'placeholder-3',
+        title: 'Community Gathering',
+        date: DateTime(now.year, now.month, now.day + 15),
+        time: '5:00 PM - 7:00 PM',
+        location: 'Community Center',
+        imageUrl: 'assets/stt_logo.png',
+        isActive: true,
+      ),
+    );
+
+    return placeholders;
   }
 }

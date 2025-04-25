@@ -173,12 +173,15 @@ class _ManageEventsPageState extends State<ManageEventsPage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'All Events',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF8B4513),
+                Expanded(
+                  child: const Text(
+                    'All Events',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF8B4513),
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 ElevatedButton.icon(
@@ -311,8 +314,10 @@ class _ManageEventsPageState extends State<ManageEventsPage> {
           children: [
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
+                  flex: 3,
                   child: Text(
                     event.title,
                     style: const TextStyle(
@@ -321,8 +326,10 @@ class _ManageEventsPageState extends State<ManageEventsPage> {
                       color: Color(0xFF8B4513),
                     ),
                     overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
                   ),
                 ),
+                const SizedBox(width: 4),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -378,6 +385,7 @@ class _ManageEventsPageState extends State<ManageEventsPage> {
                     event.location,
                     style: const TextStyle(color: Colors.grey),
                     overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
                   ),
                 ),
               ],
@@ -397,8 +405,11 @@ class _ManageEventsPageState extends State<ManageEventsPage> {
               ],
             ),
             const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.end,
+            // Action buttons row with Wrap to prevent overflow
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.end,
               children: [
                 // Registrations button
                 OutlinedButton.icon(
@@ -418,7 +429,6 @@ class _ManageEventsPageState extends State<ManageEventsPage> {
                     side: const BorderSide(color: Colors.brown),
                   ),
                 ),
-                const SizedBox(width: 8),
                 // Edit button
                 TextButton.icon(
                   icon: const Icon(Icons.edit, size: 18),
@@ -433,7 +443,6 @@ class _ManageEventsPageState extends State<ManageEventsPage> {
                   },
                   style: TextButton.styleFrom(foregroundColor: Colors.blue),
                 ),
-                const SizedBox(width: 8),
                 // Delete button
                 TextButton.icon(
                   icon: const Icon(Icons.delete, size: 18),

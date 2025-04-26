@@ -3,6 +3,16 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
+/// This file implements the donations management page for admins.
+///
+/// IMPORTANT IMPLEMENTATION NOTE:
+/// Instead of requiring Firebase composite indexes (which would need to be created
+/// through Cloud CLI or Firebase Console), we use a client-side approach:
+/// 1. We use simple queries that only require the automatically created single-field indexes
+/// 2. For sorting by timestamp, we sort the documents client-side using the _processAndSortDonations method
+///
+/// This approach ensures the app works without any additional Firestore configuration.
+
 class ManageDonationsPage extends StatefulWidget {
   const ManageDonationsPage({super.key});
 
@@ -177,7 +187,38 @@ class _ManageDonationsPageState extends State<ManageDonationsPage> {
                   }
 
                   if (snapshot.hasError) {
-                    return Center(child: Text('Error: ${snapshot.error}'));
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.error_outline,
+                            size: 48,
+                            color: Colors.red.shade300,
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Error loading donations',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 32),
+                            child: Text(
+                              'There was a problem retrieving donation data. Try again later.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
                   }
 
                   if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
@@ -205,8 +246,10 @@ class _ManageDonationsPageState extends State<ManageDonationsPage> {
                     );
                   }
 
-                  // Sort donations by timestamp (newest first)
-                  final donations = snapshot.data!.docs;
+                  // Get and sort donations manually (as a workaround until index is created)
+                  final donations = _processAndSortDonations(
+                    snapshot.data!.docs,
+                  );
 
                   return ListView.builder(
                     padding: const EdgeInsets.all(16),
@@ -249,15 +292,55 @@ class _ManageDonationsPageState extends State<ManageDonationsPage> {
   }
 
   Stream<QuerySnapshot> _getFilteredDonationsStream() {
-    Query query = FirebaseFirestore.instance.collection('donations');
+    try {
+      // Get a reference to the donations collection
+      final CollectionReference donationsRef = FirebaseFirestore.instance
+          .collection('donations');
 
-    // Apply status filter
-    if (_filterStatus != 'all') {
-      query = query.where('status', isEqualTo: _filterStatus);
+      // Always use a simple query without composite indexes
+      // For 'all' status, just get all donations
+      if (_filterStatus == 'all') {
+        return donationsRef.snapshots();
+      } else {
+        // For specific status, just filter by status (simple single-field index)
+        return donationsRef
+            .where('status', isEqualTo: _filterStatus)
+            .snapshots();
+      }
+    } catch (e) {
+      print('Error in Firestore query: $e');
+      return Stream.empty();
     }
+  }
 
-    // Order by timestamp (newest first)
-    return query.orderBy('timestamp', descending: true).snapshots();
+  // When building ListView, we'll manually sort the data client-side
+  List<QueryDocumentSnapshot> _processAndSortDonations(
+    List<QueryDocumentSnapshot> docs,
+  ) {
+    // Create a copy of the docs list to avoid modifying the original
+    final List<QueryDocumentSnapshot> sortedDocs = List.from(docs);
+
+    // Sort by timestamp (newest first)
+    sortedDocs.sort((a, b) {
+      // Get timestamps
+      final aTimestamp =
+          a.data() is Map ? (a.data() as Map)['timestamp'] as Timestamp? : null;
+      final bTimestamp =
+          b.data() is Map ? (b.data() as Map)['timestamp'] as Timestamp? : null;
+
+      // If both timestamps exist, sort by timestamp (newest first)
+      if (aTimestamp != null && bTimestamp != null) {
+        return bTimestamp.compareTo(aTimestamp); // Descending order
+      } else if (aTimestamp == null && bTimestamp != null) {
+        return 1; // b comes first
+      } else if (aTimestamp != null && bTimestamp == null) {
+        return -1; // a comes first
+      } else {
+        return 0; // Equal
+      }
+    });
+
+    return sortedDocs;
   }
 
   Widget _buildDonationCard(String donationId, Map<String, dynamic> data) {
